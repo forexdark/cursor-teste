@@ -1,7 +1,6 @@
 "use client";
 import { useSession, signOut } from "next-auth/react";
-import { useState } from "react";
-import { useAuth } from "../providers/AuthProvider";
+import { useState, useEffect } from "react";
 import { useAuth } from "../providers/AuthProvider";
 import { LucideLogOut, LucideUser, LucideSettings, LucideBell, LucideShield, LucidePalette, LucideTarget, LucideTrendingUp, LucideAward, LucideEdit, LucideCamera, LucideGift, LucideStar, LucideZap, LucideHeart } from "lucide-react";
 import { FaGoogle, FaShoppingCart } from "react-icons/fa";
