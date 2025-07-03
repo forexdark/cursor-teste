@@ -3,8 +3,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from routers import router
-from scheduler import start_scheduler
 import uvicorn
+from scheduler import start_scheduler
 
 load_dotenv()
 
@@ -25,7 +25,10 @@ app.add_middleware(
 
 app.include_router(router)
 
-start_scheduler()
+if __name__ == "__main__":
+    start_scheduler()
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
 
 @app.get("/")
 def root():
@@ -33,8 +36,4 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False) 
+    return {"status": "ok"} 
