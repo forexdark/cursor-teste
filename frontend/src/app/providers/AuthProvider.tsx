@@ -19,6 +19,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const backendJwt = session?.backendJwt || null;
   const isAuthenticated = !!backendJwt;
   
+  // Debug info
+  console.log("Auth Debug:", {
+    status,
+    hasSession: !!session,
+    hasJWT: !!backendJwt,
+    email: session?.user?.email
+  });
+  
   return (
     <AuthContext.Provider value={{ backendJwt, isAuthenticated }}>
       {children}

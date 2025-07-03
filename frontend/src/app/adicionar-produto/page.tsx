@@ -107,24 +107,31 @@ export default function AdicionarProduto() {
     setError(null);
     setSearchAttempted(true);
     
+    // Verificar se o usuário está autenticado
+    if (!backendJwt) {
+      setError("Você precisa estar logado para buscar produtos. Faça login novamente.");
+      setLoading(false);
+      return;
+    }
+    
     try {
-      // Usar proxy CORS ou buscar diretamente
-      const proxyUrl = 'https://api.allorigins.win/get?url=';
+      // Tentar buscar diretamente da API do Mercado Livre
       const targetUrl = `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=15&offset=0`;
       
       let produtos: ProdutoML[] = [];
       
       try {
-        // Tentar busca direta primeiro
+        // Busca direta (pode falhar por CORS)
         const directResponse = await fetch(targetUrl);
         if (directResponse.ok) {
           const data = await directResponse.json();
           produtos = data.results || [];
         }
       } catch (corsError) {
-        console.log("Tentando via proxy devido ao CORS...");
-        // Se falhar por CORS, usar proxy
+        console.log("CORS bloqueado, tentando via proxy...");
         try {
+          // Usar proxy CORS
+          const proxyUrl = 'https://api.allorigins.win/get?url=';
           const proxyResponse = await fetch(`${proxyUrl}${encodeURIComponent(targetUrl)}`);
           if (proxyResponse.ok) {
             const proxyData = await proxyResponse.json();
@@ -133,35 +140,40 @@ export default function AdicionarProduto() {
           }
         } catch (proxyError) {
           console.error("Erro no proxy:", proxyError);
-          // Fallback: usar serviço alternativo ou mock mínimo
-          produtos = await buscarViaFallback(q);
+          // Último recurso: dados de exemplo
+          setError("Não foi possível conectar com o Mercado Livre. Mostrando dados de exemplo.");
+          produtos = gerarDadosExemplo(q);
         }
       }
 
-      // Filtrar e ranquear resultados por relevância
-      const produtosFiltrados = produtos
-        .filter(produto => produto.title.toLowerCase().includes(q.toLowerCase()))
-        .sort((a, b) => {
-          // Priorizar por vendas, preço e relevância
-          const scoreA = (a.sold_quantity || 0) + (a.reviews?.total || 0);
-          const scoreB = (b.sold_quantity || 0) + (b.reviews?.total || 0);
-          return scoreB - scoreA;
-        })
-        .slice(0, 12);
+      // Filtrar e ordenar resultados
+      if (produtos.length > 0) {
+        const produtosFiltrados = produtos
+          .filter(produto => produto.title.toLowerCase().includes(q.toLowerCase()))
+          .sort((a, b) => {
+            const scoreA = (a.sold_quantity || 0) + (a.reviews?.total || 0);
+            const scoreB = (b.sold_quantity || 0) + (b.reviews?.total || 0);
+            return scoreB - scoreA;
+          })
+          .slice(0, 12);
+          
+        setSugestoes(produtosFiltrados);
+      } else {
+        setSugestoes([]);
+      }
 
-      setSugestoes(produtosFiltrados);
       setShowSuggestions(true);
     } catch (e: any) {
       console.error("Erro na busca:", e);
-      setError("Erro ao buscar produtos. Tente novamente.");
+      setError("Erro inesperado ao buscar produtos. Verifique sua conexão.");
       setSugestoes([]);
     } finally {
       setLoading(false);
     }
   }
 
-  // Fallback para quando APIs não funcionam
-  async function buscarViaFallback(query: string): Promise<ProdutoML[]> {
+  // Dados de exemplo para desenvolvimento/demonstração
+  function gerarDadosExemplo(query: string): ProdutoML[] {
     // Simulação mais realista baseada no termo de busca
     const baseProducts = [
       {
@@ -201,10 +213,19 @@ export default function AdicionarProduto() {
 
   async function adicionarProduto() {
     if (!selected) return;
+    
+    if (!backendJwt) {
+      setError("Você precisa estar logado para adicionar produtos. Faça login novamente.");
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
     try {
+      console.log("Adicionando produto:", selected.id);
+      console.log("Backend JWT:", backendJwt ? "Presente" : "Ausente");
+      
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/produtos/`, {
         method: "POST",
         headers: {
@@ -218,14 +239,20 @@ export default function AdicionarProduto() {
         }),
       });
       
+      console.log("Response status:", res.status);
+      
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || "Erro ao adicionar produto");
+        if (res.status === 401) {
+          throw new Error("Sessão expirada. Faça login novamente.");
+        }
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Erro HTTP ${res.status}: Não foi possível adicionar o produto`);
       }
       
       setSuccess(true);
       setTimeout(() => router.push("/dashboard"), 2000);
     } catch (e: any) {
+      console.error("Erro ao adicionar produto:", e);
       setError(e.message);
     } finally {
       setLoading(false);

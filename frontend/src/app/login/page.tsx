@@ -72,6 +72,8 @@ export default function Login() {
 
           if (!result?.error) {
             router.replace("/dashboard");
+          } else {
+            setError("Conta criada com sucesso! Faça login com suas credenciais.");
           }
         } else {
           const data = await response.json();
@@ -79,7 +81,8 @@ export default function Login() {
         }
       }
     } catch (err) {
-      setError("Erro de conexão. Tente novamente.");
+      console.error("Erro de autenticação:", err);
+      setError("Erro de conexão com o servidor. Verifique se o backend está funcionando.");
     } finally {
       setLoading(false);
     }
