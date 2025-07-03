@@ -1,10 +1,6 @@
 import os
 import sys
 from pathlib import Path
-
-# Adicionar o diretório backend ao Python path
-backend_dir = Path(__file__).parent
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -12,9 +8,7 @@ from dotenv import load_dotenv
 import uvicorn
 from datetime import datetime, timezone
 import logging
-    "http://localhost:3000",
-    "https://vigia-meli.vercel.app",
-    "https://*.vercel.app"
+
 # Carregar variáveis de ambiente
 load_dotenv()
 
@@ -30,6 +24,23 @@ app = FastAPI(
     title="VigIA Backend", 
     version="1.0.0",
     description="API para monitoramento de preços do Mercado Livre"
+)
+
+# Configurar CORS
+origins = [
+    os.getenv("FRONTEND_URL", "http://localhost:3000"),
+    "http://localhost:3000",
+    "https://vigia-frontend.vercel.app",
+    "https://vigia-meli.vercel.app",
+    "https://*.vercel.app"
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Event handlers
@@ -49,23 +60,12 @@ async def startup_event():
     if not database_url:
         logger.warning("⚠️ DATABASE_URL não configurada - algumas funcionalidades podem não funcionar")
 
-# Configurar CORS
-origins = [
-    os.getenv("FRONTEND_URL", "http://localhost:3000"),
-    "http://localhost:3000",
-    "https://vigia-frontend.vercel.app",
-    "https://*.vercel.app"
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Importar e incluir rotas (com tratamento de erro)
+try:
+    from routers import router
+    app.include_router(router)
+    logger.info("✅ Rotas carregadas com sucesso")
+except ImportError as e:
     logger.error(f"❌ Erro ao importar rotas: {e}")
     # Criar rotas básicas como fallback
     @app.get("/")

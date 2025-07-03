@@ -8,7 +8,6 @@ import ProtectedRoute from "../components/ProtectedRoute";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
-import { useAuth } from "../providers/AuthProvider";
 
 export default function Perfil() {
   const sessionData = useSession();
@@ -24,6 +23,7 @@ export default function Perfil() {
   });
   const [tema, setTema] = useState("claro");
   const [idioma, setIdioma] = useState("pt-BR");
+  const { backendJwt } = useAuth();
   const [estatisticas, setEstatisticas] = useState({
     produtosMonitorados: 0,
     economiaTotal: 0,
@@ -36,9 +36,6 @@ export default function Perfil() {
   const [loadingStats, setLoadingStats] = useState(true);
 
   // Buscar dados reais do backend
-  
-  // Mock do backendJwt para desenvolvimento
-  const backendJwt = "mock-jwt-token";
   
   useEffect(() => {
     if (backendJwt) {
@@ -89,19 +86,18 @@ export default function Perfil() {
       setLoadingStats(false);
     }
   };
+  
+  useEffect(() => {
+    if (backendJwt) {
+      buscarEstatisticasReais();
+    }
+  }, [backendJwt]);
 
   const conquistas = [
     { id: 1, nome: "Primeiro Produto", descricao: "Adicionou seu primeiro produto", icon: "🎯", desbloqueada: true },
     { id: 2, nome: "Economia Master", descricao: "Economizou mais de R$ 1000", icon: "💰", desbloqueada: true },
     { id: 3, nome: "Alerta Expert", descricao: "Recebeu 50 alertas", icon: "🔔", desbloqueada: false },
     { id: 4, nome: "Super Desconto", descricao: "Encontrou desconto de +50%", icon: "⚡", desbloqueada: true },
-  ];
-
-  const atividades = [
-    { id: 1, tipo: "produto_adicionado", titulo: "iPhone 15 Pro adicionado", data: "Hoje, 14:30", icon: "➕" },
-    { id: 2, tipo: "alerta_recebido", titulo: "Desconto de 15% no MacBook Air", data: "Ontem, 09:15", icon: "🔔" },
-    { id: 3, tipo: "economia", titulo: "Economizou R$ 250 no PlayStation 5", data: "2 dias atrás", icon: "💰" },
-    { id: 4, tipo: "nivel_up", titulo: "Subiu para nível Gold", data: "1 semana atrás", icon: "🏆" },
   ];
 
   if (status === "loading") {
@@ -301,20 +297,21 @@ export default function Perfil() {
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <LucideTarget className="w-5 h-5" />
-                        Atividades Recentes
+                        Resumo da Conta
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {atividades.map((atividade) => (
-                          <div key={atividade.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
-                            <div className="text-xl">{atividade.icon}</div>
-                            <div className="flex-1">
-                              <p className="font-medium text-gray-800">{atividade.titulo}</p>
-                              <p className="text-sm text-gray-500">{atividade.data}</p>
-                            </div>
-                          </div>
-                        ))}
+                      <div className="space-y-4 text-center">
+                        <div className="p-4 bg-blue-50 rounded-xl">
+                          <h4 className="font-semibold text-blue-800">Membro desde</h4>
+                          <p className="text-blue-600">
+                            {new Date().toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                        <div className="p-4 bg-green-50 rounded-xl">
+                          <h4 className="font-semibold text-green-800">Status da Conta</h4>
+                          <p className="text-green-600">✅ Ativa</p>
+                        </div>
                       </div>
                     </CardContent>
                   </Card>
