@@ -1,6 +1,7 @@
 "use client";
 import { useSession, signOut } from "next-auth/react";
 import { useState } from "react";
+import { useAuth } from "../providers/AuthProvider";
 import { LucideLogOut, LucideUser, LucideSettings, LucideBell, LucideShield, LucidePalette, LucideTarget, LucideTrendingUp, LucideAward, LucideEdit, LucideCamera, LucideGift, LucideStar, LucideZap, LucideHeart } from "lucide-react";
 import { FaGoogle, FaShoppingCart } from "react-icons/fa";
 import ProtectedRoute from "../components/ProtectedRoute";
@@ -12,7 +13,6 @@ export default function Perfil() {
   const sessionData = useSession();
   const session = sessionData?.data || null;
   const status = sessionData?.status || "unauthenticated";
-  const { backendJwt } = useAuth();
   
   const [activeTab, setActiveTab] = useState("perfil");
   const [notificacoes, setNotificacoes] = useState({
@@ -35,6 +35,8 @@ export default function Perfil() {
   const [loadingStats, setLoadingStats] = useState(true);
 
   // Buscar dados reais do backend
+  const { backendJwt } = useAuth();
+  
   useEffect(() => {
     if (backendJwt) {
       buscarEstatisticasReais();

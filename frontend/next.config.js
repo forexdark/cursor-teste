@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js']
+    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+    appDir: true
   },
   images: {
     domains: ['http2.mlstatic.com', 'mlstatic.com'],
@@ -13,7 +14,8 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true
   },
-  output: 'standalone'
+  swcMinify: true,
+  reactStrictMode: true
 };
 
 module.exports = nextConfig;

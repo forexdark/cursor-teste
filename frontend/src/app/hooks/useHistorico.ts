@@ -1,6 +1,6 @@
 "use client";
-import { useAuth } from "../providers/AuthProvider";
 import { useState } from "react";
+import { useAuth } from "../providers/AuthProvider";
 
 export interface HistoricoPreco {
   id: number;
