@@ -4,7 +4,9 @@ import { LucideLogOut } from "lucide-react";
 import ProtectedRoute from "../components/ProtectedRoute";
 
 export default function Perfil() {
-  const { data: session = null, status = "unauthenticated" } = useSession() || {};
+  const sessionData = useSession();
+  const session = sessionData?.data || null;
+  const status = sessionData?.status || "unauthenticated";
 
   return (
     <ProtectedRoute>

@@ -13,9 +13,12 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { data: session = null, status = "unauthenticated" } = useSession() || {};
+  const sessionData = useSession();
+  const session = sessionData?.data || null;
+  const status = sessionData?.status || "unauthenticated";
   const backendJwt = session?.backendJwt || null;
   const isAuthenticated = !!backendJwt;
+  
   return (
     <AuthContext.Provider value={{ backendJwt, isAuthenticated }}>
       {children}
@@ -25,4 +28,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   return useContext(AuthContext);
-} 

@@ -9,8 +9,9 @@ import { Badge } from "./ui/Badge";
 import { useState } from "react";
 
 export default function Header() {
-  const sessionData = useSession() || {};
-  const { data, status } = sessionData;
+  const sessionData = useSession();
+  const data = sessionData?.data || null;
+  const status = sessionData?.status || "unauthenticated";
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 

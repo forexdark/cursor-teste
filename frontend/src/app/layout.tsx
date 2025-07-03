@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { SessionProvider } from "next-auth/react";
 import { AuthProvider } from "./providers/AuthProvider";
 import Header from "./components/Header";
 
@@ -22,10 +23,12 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={`${inter.variable} antialiased`}>
-        <AuthProvider>
-          <Header />
-          {children}
-        </AuthProvider>
+        <SessionProvider>
+          <AuthProvider>
+            <Header />
+            {children}
+          </AuthProvider>
+        </SessionProvider>
       </body>
     </html>
   );

@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { status = "unauthenticated" } = useSession() || {};
+  const sessionData = useSession();
+  const status = sessionData?.status || "unauthenticated";
   const router = useRouter();
 
   useEffect(() => {
@@ -17,5 +18,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     return <div className="flex justify-center items-center min-h-screen text-blue-700">Carregando...</div>;
   }
 
+  if (status === "unauthenticated") {
+    return null;
+  }
+
   return <>{children}</>;
-} 

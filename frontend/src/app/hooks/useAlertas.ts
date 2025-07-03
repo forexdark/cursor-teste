@@ -7,7 +7,6 @@ export interface Alerta {
   preco_alvo: number;
   enviado: boolean;
   criado_em: string;
-}
 
 export function useAlertas() {
   const { backendJwt } = useAuth();
@@ -35,7 +34,9 @@ export function useAlertas() {
   }
 
   useEffect(() => {
-    if (backendJwt) fetchAlertas();
+    if (backendJwt) {
+      fetchAlertas();
+    }
   }, [backendJwt]);
 
   return { alertas, loading, error, refetch: fetchAlertas };

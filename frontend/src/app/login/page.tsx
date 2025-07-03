@@ -9,7 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../co
 import { Badge } from "../components/ui/Badge";
 
 export default function Login() {
-  const { data: session, status } = useSession();
+  const sessionData = useSession();
+  const session = sessionData?.data || null;
+  const status = sessionData?.status || "loading";
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
