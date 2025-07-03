@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   
   // Para desenvolvimento, usar um token mock se não houver sessão
-  const backendJwt = session?.backendJwt || (status === "authenticated" ? "mock-jwt-token" : null);
+  const backendJwt = session?.backendJwt || (status === "authenticated" && session?.user?.email ? "mock-jwt-token" : null);
   const isAuthenticated = !!backendJwt;
   
   useEffect(() => {
@@ -32,12 +32,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [status]);
   
   // Debug info
-  console.log("Auth Debug:", {
-    status,
-    hasSession: !!session,
-    hasJWT: !!backendJwt,
-    email: session?.user?.email
-  });
+  if (process.env.NODE_ENV === 'development') {
+    console.log("Auth Debug:", {
+      status,
+      hasSession: !!session,
+      hasJWT: !!backendJwt,
+      email: session?.user?.email
+    });
+  }
   
   return (
     <AuthContext.Provider value={{ backendJwt, isAuthenticated, loading }}>

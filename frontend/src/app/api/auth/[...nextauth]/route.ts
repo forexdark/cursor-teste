@@ -21,8 +21,9 @@ const authOptions: NextAuthOptions = {
         }
 
         try {
-          // Tentar fazer login no backend
-          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+          // Tentar fazer login no backend - usar URL absoluta para produção
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
+          const res = await fetch(`${apiUrl}/auth/login`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -87,12 +88,15 @@ const authOptions: NextAuthOptions = {
       return session;
     },
     async redirect({ url, baseUrl }) {
+      // Usar NEXTAUTH_URL se disponível, senão usar baseUrl
+      const redirectBase = process.env.NEXTAUTH_URL || baseUrl;
+      
       if (url.startsWith("/") && !url.startsWith("//")) {
-        return `${baseUrl}${url}`;
-      } else if (url.startsWith(baseUrl)) {
+        return `${redirectBase}${url}`;
+      } else if (url.startsWith(redirectBase)) {
         return url;
       }
-      return `${baseUrl}/dashboard`;
+      return `${redirectBase}/dashboard`;
     },
   },
   session: {

@@ -1,24 +1,24 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
-    appDir: true
+    appDir: true,
   },
   images: {
-    domains: ['http2.mlstatic.com', 'mlstatic.com'],
+    domains: ['http2.mlstatic.com', 'mlstatic.com', 'via.placeholder.com'],
+  },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app',
-  },
-    unoptimized: true
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000',
   },
   eslint: {
-    ignoreDuringBuilds: true
+    ignoreDuringBuilds: true,
   },
   typescript: {
-    ignoreBuildErrors: true
+    ignoreBuildErrors: true,
   },
   swcMinify: true,
-  reactStrictMode: true
+  reactStrictMode: true,
+  output: 'standalone',
 };
 
 module.exports = nextConfig;
