@@ -1,35 +1,61 @@
 import os
-from fastapi import FastAPI
+import sys
+from pathlib import Path
+
+# Adicionar o diretório backend ao Python path
+backend_dir = Path(__file__).parent
+sys.path.insert(0, str(backend_dir))
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
-from routers import router
 import uvicorn
-from scheduler import start_scheduler
 from datetime import datetime, timezone
 import logging
 
+# Carregar variáveis de ambiente
 load_dotenv()
 
 # Configurar logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="VigIA Backend", version="1.0.0")
+# Criar aplicação FastAPI
+app = FastAPI(
+    title="VigIA Backend", 
+    version="1.0.0",
+    description="API para monitoramento de preços do Mercado Livre"
+)
 
+# Event handlers
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 VigIA Backend iniciando...")
     logger.info(f"📅 Timestamp: {datetime.now(timezone.utc)}")
     logger.info(f"🌐 Frontend URL: {os.getenv('FRONTEND_URL', 'http://localhost:3000')}")
-    logger.info(f"🗄️ Database URL: {'Configurado' if os.getenv('DATABASE_URL') else 'NÃO CONFIGURADO'}")
-    logger.info(f"🛒 ML Client ID: {'Configurado' if os.getenv('ML_CLIENT_ID') else 'NÃO CONFIGURADO'}")
+    
+    # Verificar variáveis essenciais
+    database_url = os.getenv('DATABASE_URL')
+    ml_client_id = os.getenv('ML_CLIENT_ID')
+    
+    logger.info(f"🗄️ Database: {'✅ Configurado' if database_url else '❌ NÃO CONFIGURADO'}")
+    logger.info(f"🛒 ML Client: {'✅ Configurado' if ml_client_id else '❌ NÃO CONFIGURADO'}")
+    
+    if not database_url:
+        logger.warning("⚠️ DATABASE_URL não configurada - algumas funcionalidades podem não funcionar")
 
-# CORS
+# Configurar CORS
 origins = [
     os.getenv("FRONTEND_URL", "http://localhost:3000"),
-    "http://localhost:3000"
+    "http://localhost:3000",
+    "https://vigia-frontend.vercel.app",
+    "https://*.vercel.app"
 ]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -38,8 +64,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(router)
+# Importar e incluir rotas (com tratamento de erro)
+try:
+    from routers import router
+    app.include_router(router)
+    logger.info("✅ Rotas carregadas com sucesso")
+except ImportError as e:
+    logger.error(f"❌ Erro ao importar rotas: {e}")
+    # Criar rotas básicas como fallback
+    @app.get("/")
+    def root_fallback():
+        return {
+            "message": "VigIA Backend rodando! 🚀",
+            "status": "online (modo fallback)",
+            "error": "Algumas rotas podem não estar disponíveis"
+        }
 
+# Exception handlers
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
     logger.warning(f"❌ 404 - Endpoint não encontrado: {request.url}")
@@ -50,11 +91,11 @@ async def not_found_handler(request, exc):
             "url": str(request.url),
             "method": request.method,
             "available_endpoints": [
+                "GET /",
                 "GET /health",
                 "POST /auth/register", 
                 "POST /auth/login",
                 "GET /test/mercadolivre",
-                "GET /produtos/search/{query}",
                 "GET /docs"
             ]
         }
@@ -72,6 +113,18 @@ async def method_not_allowed_handler(request, exc):
         }
     )
 
+@app.exception_handler(500)
+async def internal_error_handler(request, exc):
+    logger.error(f"❌ 500 - Erro interno: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Erro interno do servidor",
+            "message": "Tente novamente em alguns momentos"
+        }
+    )
+
+# Rotas básicas
 @app.get("/")
 def root():
     return {
@@ -85,3 +138,41 @@ def root():
 
 @app.get("/health")
 def health():
+    """Endpoint de verificação de saúde"""
+    try:
+        # Verificar conexão com banco (se disponível)
+        database_status = "ok" if os.getenv('DATABASE_URL') else "not_configured"
+        
+        return {
+            "status": "ok",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "version": "1.0.0",
+            "database": database_status,
+            "environment": os.getenv("RAILWAY_ENVIRONMENT", "development")
+        }
+    except Exception as e:
+        logger.error(f"Erro no health check: {e}")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "message": str(e)}
+        )
+
+# Endpoint de diagnóstico
+@app.get("/debug/info")
+def debug_info():
+    """Informações de debug (apenas para desenvolvimento)"""
+    return {
+        "python_version": sys.version,
+        "working_directory": os.getcwd(),
+        "environment_vars": {
+            "DATABASE_URL": "✅ Set" if os.getenv('DATABASE_URL') else "❌ Not Set",
+            "ML_CLIENT_ID": "✅ Set" if os.getenv('ML_CLIENT_ID') else "❌ Not Set",
+            "FRONTEND_URL": os.getenv('FRONTEND_URL', 'Not Set'),
+            "PORT": os.getenv('PORT', 'Not Set')
+        }
+    }
+
+# Para execução local
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
