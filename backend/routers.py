@@ -37,17 +37,17 @@ class MLAuthResponse(BaseModel):
 # --- AUTENTICAÇÃO ---
 @router.post("/auth/register", response_model=UsuarioOut)
 async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
-    print(f"DEBUG: Tentando registrar usuário: {usuario.email}")
+    print(f"✅ DEBUG: Tentando registrar usuário: {usuario.email}")
     
     # Verificar se usuário já existe
     existing_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
     if existing_user:
-        print(f"DEBUG: Email já existe: {usuario.email}")
+        print(f"❌ DEBUG: Email já existe: {usuario.email}")
         raise HTTPException(status_code=400, detail="Email já cadastrado")
     
     # Hash da senha
     senha_hash = pwd_context.hash(usuario.senha) if usuario.senha else None
-    print(f"DEBUG: Senha hash gerado: {'Sim' if senha_hash else 'Não'}")
+    print(f"🔒 DEBUG: Senha hash gerado: {'Sim' if senha_hash else 'Não'}")
     
     # Criar usuário
     db_usuario = Usuario(
@@ -61,9 +61,9 @@ async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     try:
         db.commit()
         db.refresh(db_usuario)
-        print(f"DEBUG: Usuário criado com sucesso: ID {db_usuario.id}")
+        print(f"✅ DEBUG: Usuário criado com sucesso: ID {db_usuario.id}")
     except Exception as e:
-        print(f"DEBUG: Erro ao criar usuário: {e}")
+        print(f"❌ DEBUG: Erro ao criar usuário: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Erro interno do servidor")
     
@@ -71,19 +71,19 @@ async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
 
 @router.post("/auth/login") 
 async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
-    print(f"DEBUG: Tentativa de login: {login_data.email}")
+    print(f"🔐 DEBUG: Tentativa de login: {login_data.email}")
     
     user = db.query(Usuario).filter(Usuario.email == login_data.email).first()
     if not user:
-        print(f"DEBUG: Usuário não encontrado: {login_data.email}")
+        print(f"❌ DEBUG: Usuário não encontrado: {login_data.email}")
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     
     # Verificar senha (se existe hash)
     if user.senha_hash and not pwd_context.verify(login_data.senha, user.senha_hash):
-        print(f"DEBUG: Senha incorreta para: {login_data.email}")
+        print(f"❌ DEBUG: Senha incorreta para: {login_data.email}")
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     
-    print(f"DEBUG: Login bem-sucedido: {user.email}")
+    print(f"✅ DEBUG: Login bem-sucedido: {user.email}")
     
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}
