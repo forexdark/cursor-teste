@@ -316,7 +316,8 @@ label {
   border-color: #2563eb !important;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
   font-weight: 600 !important;
-}</action>
+}
+
 /* Better button contrast */
 button[type="submit"], .btn-primary {
   background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
