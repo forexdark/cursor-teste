@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List
 from models import UsuarioOut, UsuarioCreate, ProdutoMonitoradoOut, ProdutoMonitoradoCreate, HistoricoPrecoOut, AlertaOut, AlertaCreate, Usuario, ProdutoMonitorado, HistoricoPreco, Alerta
@@ -9,32 +10,71 @@ from datetime import datetime
 from mercadolivre import buscar_produto_ml, buscar_avaliacoes_ml
 import asyncio
 from openai_utils import gerar_resumo_avaliacoes
+import httpx
+from pydantic import BaseModel
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# Modelos para resposta
+class LoginRequest(BaseModel):
+    email: str
+    senha: str
+
+class MLTestResponse(BaseModel):
+    success: bool
+    message: str
+    data: dict = None
+
 # --- AUTENTICAÇÃO ---
 @router.post("/auth/register", response_model=UsuarioOut)
 def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
+    print(f"DEBUG: Tentando registrar usuário: {usuario.email}")
+    
+    # Verificar se usuário já existe
     if db.query(Usuario).filter(Usuario.email == usuario.email).first():
+        print(f"DEBUG: Email já existe: {usuario.email}")
         raise HTTPException(status_code=400, detail="Email já cadastrado")
-    hashed = pwd_context.hash(usuario.senha)
-    db_usuario = Usuario(email=usuario.email, nome=usuario.nome, is_active=True)
+    
+    # Hash da senha
+    senha_hash = pwd_context.hash(usuario.senha) if usuario.senha else None
+    print(f"DEBUG: Senha hash gerado: {'Sim' if senha_hash else 'Não'}")
+    
+    # Criar usuário
+    db_usuario = Usuario(
+        email=usuario.email, 
+        nome=usuario.nome, 
+        senha_hash=senha_hash,
+        is_active=True
+    )
+    
     db.add(db_usuario)
-    db.commit()
-    db.refresh(db_usuario)
+    try:
+        db.commit()
+        db.refresh(db_usuario)
+        print(f"DEBUG: Usuário criado com sucesso: ID {db_usuario.id}")
+    except Exception as e:
+        print(f"DEBUG: Erro ao criar usuário: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Erro interno do servidor")
+    
     return db_usuario
 
-@router.post("/auth/login")
-def login(form_data: UsuarioCreate, db: Session = Depends(get_db)):
-    user = db.query(Usuario).filter(Usuario.email == form_data.email).first()
+@router.post("/auth/login") 
+def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+    print(f"DEBUG: Tentativa de login: {login_data.email}")
+    
+    user = db.query(Usuario).filter(Usuario.email == login_data.email).first()
     if not user:
+        print(f"DEBUG: Usuário não encontrado: {login_data.email}")
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     
-    # Por enquanto, aceitar qualquer senha para desenvolvimento
-    # TODO: Implementar hash de senha corretamente
-    # if not pwd_context.verify(form_data.senha, user.senha):
-    #     raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    # Verificar senha (se existe hash)
+    if user.senha_hash and not pwd_context.verify(login_data.senha, user.senha_hash):
+        print(f"DEBUG: Senha incorreta para: {login_data.email}")
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    
+    print(f"DEBUG: Login bem-sucedido: {user.email}")
     
     access_token = create_access_token(data={"sub": user.email})
     return {"access_token": access_token, "token_type": "bearer"}

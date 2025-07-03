@@ -12,9 +12,11 @@ class Usuario(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     nome = Column(String, nullable=True)
+    senha_hash = Column(String, nullable=True)  # Para autenticação email/senha
     google_id = Column(String, unique=True, nullable=True)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
+    criado_em = Column(DateTime, default=datetime.utcnow)
 
 class ProdutoMonitorado(Base):
     __tablename__ = 'produtos_monitorados'
