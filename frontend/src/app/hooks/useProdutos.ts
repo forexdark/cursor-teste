@@ -10,6 +10,7 @@ export interface Produto {
   preco_atual: number;
   estoque_atual: number;
   criado_em: string;
+}
 
 export function useProdutos() {
   const { backendJwt } = useAuth();
