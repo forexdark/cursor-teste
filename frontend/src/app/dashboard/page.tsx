@@ -22,8 +22,11 @@ export default function Dashboard() {
           <div className="mb-8">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div>
-                <h1 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-2">
-                  Dashboard
+                <h1 className="text-3xl lg:text-4xl font-bold text-gray-800 mb-2 flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center">
+                    <FaShoppingCart className="text-white text-lg" />
+                  </div>
+                  Bem-vindo ao VigIA
                 </h1>
                 <p className="text-gray-600">
                   Acompanhe seus produtos monitorados e economize dinheiro

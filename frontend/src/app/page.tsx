@@ -151,12 +151,11 @@ export default function Home() {
             <Button 
               size="xl" 
               className="group relative overflow-hidden"
-              onClick={() => signIn("google")}
+              onClick={() => window.location.href = "/login"}
             >
               <div className="absolute inset-0 bg-gradient-to-r from-green-500 to-green-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               <span className="relative flex items-center">
-                <FaGoogle className="mr-2" />
-                Começar a Economizar GRÁTIS
+                Começar Grátis
                 <LucideArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </span>
             </Button>
@@ -271,10 +270,9 @@ export default function Home() {
             <Button 
               size="xl" 
               className="group"
-              onClick={() => signIn("google")}
+              onClick={() => window.location.href = "/login"}
             >
-              <FaGoogle className="mr-2" />
-              Quero Começar a Economizar Agora
+              Quero Começar Grátis Agora
               <LucideArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           </div>
@@ -456,10 +454,9 @@ export default function Home() {
               size="xl" 
               variant="secondary"
               className="group bg-white text-blue-700 hover:bg-gray-100"
-              onClick={() => signIn("google")}
+              onClick={() => window.location.href = "/login"}
             >
-              <FaGoogle className="mr-2" />
-              Começar Agora - É GRÁTIS
+              Começar Grátis
               <LucideArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Button>
           </div>
