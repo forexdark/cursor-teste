@@ -17,7 +17,8 @@
     "@supabase/supabase-js": "^2.39.0",
     "lucide-react": "^0.292.0",
     "chart.js": "^4.4.0",
-    "recharts": "^2.7.2"
+    "recharts": "^2.7.2",
+    "react-chartjs-2": "^5.2.0"
   },
   "devDependencies": {
     "eslint": "^8.56.0",
