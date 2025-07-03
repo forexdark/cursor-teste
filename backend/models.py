@@ -51,8 +51,18 @@ class UsuarioBase(BaseModel):
     email: EmailStr
     nome: Optional[str] = None
 
-class UsuarioCreate(UsuarioBase):
+class UsuarioCreate(BaseModel):
+    email: EmailStr
+    nome: Optional[str] = None
     senha: str
+
+class LoginRequest(BaseModel):
+    email: str
+    senha: str
+
+class MLAuthRequest(BaseModel):
+    code: str
+    state: Optional[str] = None
 
 class UsuarioOut(UsuarioBase):
     id: int

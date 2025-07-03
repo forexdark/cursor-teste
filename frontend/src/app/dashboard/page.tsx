@@ -8,6 +8,7 @@ import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { useState, useEffect } from "react";
+import MLAuthButton from "../components/MLAuthButton";
 
 export default function Inicio() {
   const { produtos, loading, error, refetch } = useProdutos();
@@ -211,6 +212,21 @@ export default function Inicio() {
             </div>
 
             {/* Insights IA, Cupons e Novidades */}
+            {/* ML Authorization Status */}
+            <div className="mb-8">
+              <Card className="border-l-4 border-yellow-400 bg-gradient-to-r from-yellow-50 to-yellow-100">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-yellow-800 mb-1">Autorização Mercado Livre</h3>
+                      <p className="text-yellow-700 text-sm">Autorize para buscar produtos reais e obter preços atualizados</p>
+                    </div>
+                    <MLAuthButton compact />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
               
               {/* Insights IA */}

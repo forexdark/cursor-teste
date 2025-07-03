@@ -7,6 +7,7 @@ import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import ProtectedRoute from "../components/ProtectedRoute";
+import MLAuthButton from "../components/MLAuthButton";
 
 interface ProdutoML {
   id: string;
@@ -347,6 +348,16 @@ export default function AdicionarProduto() {
             </div>
 
             {/* Search Section */}
+            {/* ML Authorization Section */}
+            <div className="mb-8">
+              <MLAuthButton onAuthSuccess={() => {
+                // Recarregar produtos quando autorização for bem-sucedida
+                if (query) {
+                  buscarSugestoes(query);
+                }
+              }} />
+            </div>
+
             <Card className="mb-8 overflow-hidden border-0 shadow-2xl bg-gradient-to-br from-white via-blue-50/30 to-purple-50/30">
               <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
                 <CardTitle className="flex items-center gap-3 text-xl">

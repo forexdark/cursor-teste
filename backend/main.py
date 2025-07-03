@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from routers import router
 import uvicorn
@@ -25,6 +26,20 @@ app.add_middleware(
 )
 
 app.include_router(router)
+
+@app.exception_handler(404)
+async def not_found_handler(request, exc):
+    return JSONResponse(
+        status_code=404,
+        content={"detail": "Endpoint não encontrado"}
+    )
+
+@app.exception_handler(405)
+async def method_not_allowed_handler(request, exc):
+    return JSONResponse(
+        status_code=405,
+        content={"detail": "Método não permitido para este endpoint"}
+    )
 
 if __name__ == "__main__":
     start_scheduler()
