@@ -24,40 +24,65 @@ const authOptions: NextAuthOptions = {
         console.log("🔐 Tentando autenticar:", credentials.email);
 
         try {
-          // Tentar fazer login no backend - usar URL absoluta para produção
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
-          console.log("🌐 API URL:", apiUrl);
-          
-          const res = await fetch(`${apiUrl}/auth/login`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              email: credentials.email,
-              senha: credentials.password,
-            }),
-          });
+          // URLs de fallback para desenvolvimento e produção
+          const apiUrls = [
+            process.env.NEXT_PUBLIC_API_URL,
+            'https://vigia-meli.up.railway.app',
+            'http://localhost:8000'
+          ].filter(Boolean);
 
-          console.log("📡 Response status:", res.status);
-          if (res.ok) {
-            const data = await res.json();
-            console.log("✅ Login bem-sucedido no backend");
+          let loginSuccess = false;
+          let userData = null;
+
+          // Tentar cada URL até uma funcionar
+          for (const apiUrl of apiUrls) {
+            try {
+              console.log("🌐 Tentando API:", apiUrl);
+              
+              const res = await fetch(`${apiUrl}/auth/login`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  email: credentials.email,
+                  senha: credentials.password,
+                }),
+                timeout: 10000, // 10 segundos
+              });
+
+              if (res.ok) {
+                const data = await res.json();
+                console.log("✅ Login bem-sucedido no backend:", apiUrl);
+                userData = data;
+                loginSuccess = true;
+                break;
+              } else {
+                const errorData = await res.json().catch(() => ({}));
+                console.log("❌ Erro HTTP:", res.status, errorData);
+              }
+            } catch (apiError) {
+              console.log("❌ Erro na API:", apiUrl, apiError);
+              continue; // Tentar próxima URL
+            }
+          }
+
+          if (loginSuccess && userData) {
             return {
-              id: "1",
+              id: userData.user?.id?.toString() || "1",
               email: credentials.email,
-              name: credentials.email.split('@')[0],
-              backendJwt: data.access_token,
+              name: userData.user?.nome || credentials.email.split('@')[0],
+              backendJwt: userData.access_token,
             };
           } else {
-            const errorData = await res.json().catch(() => ({}));
-            console.log("❌ Erro do backend:", errorData);
+            // Se todas as URLs falharam, retornar erro
+            console.log("❌ Todas as tentativas de conexão falharam");
+            return null;
           }
         } catch (error) {
-          console.error("❌ Erro na autenticação:", error);
+          console.error("❌ Erro geral na autenticação:", error);
+          return null;
         }
-        
-        return null;
       }
     })
   ],
@@ -67,27 +92,44 @@ const authOptions: NextAuthOptions = {
       if (account && profile?.email) {
         console.log("🔍 Processando Google OAuth...");
         try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
-          console.log("🌐 Tentando conectar Google OAuth com:", apiUrl);
-          const res = await fetch(`${apiUrl}/auth/google`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token_id: account.id_token }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            token.backendJwt = data.access_token;
-            console.log("✅ Google OAuth bem-sucedido");
-          } else {
-            console.log("⚠️ Google OAuth falhou, status:", res.status);
-            const errorText = await res.text().catch(() => "Erro desconhecido");
-            console.log("❌ Erro Google OAuth:", errorText);
-            // Para desenvolvimento, criar token mock mais robusto
+          // URLs de fallback
+          const apiUrls = [
+            process.env.NEXT_PUBLIC_API_URL,
+            'https://vigia-meli.up.railway.app'
+          ].filter(Boolean);
+
+          let googleSuccess = false;
+          
+          for (const apiUrl of apiUrls) {
+            try {
+              console.log("🌐 Tentando Google OAuth com:", apiUrl);
+              const res = await fetch(`${apiUrl}/auth/google`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token_id: account.id_token }),
+                timeout: 10000,
+              });
+              
+              if (res.ok) {
+                const data = await res.json();
+                token.backendJwt = data.access_token;
+                console.log("✅ Google OAuth bem-sucedido");
+                googleSuccess = true;
+                break;
+              }
+            } catch (apiError) {
+              console.log("❌ Erro Google OAuth:", apiUrl, apiError);
+              continue;
+            }
+          }
+          
+          if (!googleSuccess) {
+            console.log("⚠️ Google OAuth falhou, usando token mock");
+            // Token mock mais robusto para desenvolvimento
             token.backendJwt = `mock-jwt-google-${profile?.email?.split('@')[0]}-${Date.now()}`;
           }
         } catch (error) {
           console.error("❌ Erro Google OAuth:", error);
-          // Token mock para manter funcionalidade
           token.backendJwt = `mock-jwt-google-error-${Date.now()}`;
         }
       }
@@ -123,7 +165,8 @@ const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/login",
     error: "/login",
-  }
+  },
+  debug: process.env.NODE_ENV === 'development',
 };
 
 const handler = NextAuth(authOptions);

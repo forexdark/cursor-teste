@@ -3,7 +3,7 @@ import { useState } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { FaGoogle, FaEnvelope, FaEye, FaEyeSlash, FaShoppingCart, FaLock, FaUserPlus } from "react-icons/fa";
-import { LucideArrowRight, LucideShield, LucideZap, LucideHeart, LucideArrowLeft } from "lucide-react";
+import { LucideArrowRight, LucideShield, LucideZap, LucideHeart, LucideArrowLeft, LucideWifi, LucideWifiOff } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
@@ -22,6 +22,7 @@ export default function Login() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [backendStatus, setBackendStatus] = useState<"unknown" | "online" | "offline">("unknown");
   const [debugInfo, setDebugInfo] = useState("");
 
   // Redirect if already authenticated
@@ -30,6 +31,39 @@ export default function Login() {
     return null;
   }
 
+  // Verificar status do backend
+  const checkBackendStatus = async () => {
+    const apiUrls = [
+      process.env.NEXT_PUBLIC_API_URL,
+      'https://vigia-meli.up.railway.app'
+    ].filter(Boolean);
+
+    setDebugInfo("🔍 Verificando status do backend...");
+
+    for (const apiUrl of apiUrls) {
+      try {
+        setDebugInfo(`🌐 Testando: ${apiUrl}`);
+        const response = await fetch(`${apiUrl}/health`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+          setBackendStatus("online");
+          setDebugInfo(`✅ Backend online: ${apiUrl}`);
+          return apiUrl;
+        }
+      } catch (error) {
+        setDebugInfo(`❌ Backend offline: ${apiUrl}`);
+        continue;
+      }
+    }
+    
+    setBackendStatus("offline");
+    setDebugInfo("❌ Todos os servidores estão offline");
+    return null;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -37,56 +71,37 @@ export default function Login() {
     setDebugInfo("");
 
     try {
+      // Primeiro verificar se o backend está online
+      const workingBackend = await checkBackendStatus();
+      
+      if (!workingBackend) {
+        setError("Servidor temporariamente indisponível. Tente novamente em alguns momentos.");
+        return;
+      }
+
       if (isLogin) {
-        setDebugInfo("🔐 Tentando fazer login...");
+        setDebugInfo("🔐 Fazendo login via NextAuth...");
         
-        try {
-          // Tentar login direto com o backend primeiro
-          const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
-          setDebugInfo(`🌐 Conectando com: ${backendUrl}`);
-          
-          const directLoginResponse = await fetch(`${backendUrl}/auth/login`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              email: formData.email,
-              senha: formData.password,
-            }),
-          });
+        const result = await signIn("credentials", {
+          email: formData.email,
+          password: formData.password,
+          redirect: false,
+        });
 
-          if (directLoginResponse.ok) {
-            setDebugInfo("✅ Login no backend bem-sucedido, redirecionando...");
-            // Se o backend funcionar, usar NextAuth
-            const result = await signIn("credentials", {
-              email: formData.email,
-              password: formData.password,
-              redirect: false,
-            });
+        setDebugInfo(`📊 Resultado do login: ${result?.error ? 'Erro' : 'Sucesso'}`);
 
-            if (!result?.error) {
-              router.replace("/dashboard");
-            } else {
-              setError("Erro na sessão. Tente novamente.");
-            }
-          } else {
-            const errorData = await directLoginResponse.json().catch(() => ({}));
-            setError(errorData.detail || "Email ou senha incorretos");
-          }
-        } catch (fetchError) {
-          setError("Erro de conexão com o servidor. Verifique se o backend está funcionando.");
-          setDebugInfo(`❌ Erro: ${fetchError}`);
+        if (result?.error) {
+          setError("Email ou senha incorretos");
+        } else {
+          setDebugInfo("✅ Login bem-sucedido, redirecionando...");
+          router.replace("/dashboard");
         }
       } else {
         // Registro
-        setDebugInfo("📝 Tentando criar conta...");
+        setDebugInfo("📝 Criando nova conta...");
         
         try {
-          const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
-          setDebugInfo(`🌐 Conectando com: ${backendUrl}`);
-          
-          const response = await fetch(`${backendUrl}/auth/register`, {
+          const response = await fetch(`${workingBackend}/auth/register`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -98,9 +113,12 @@ export default function Login() {
             }),
           });
 
+          setDebugInfo(`📊 Status do registro: ${response.status}`);
+
           if (response.ok) {
-            setDebugInfo("✅ Conta criada! Fazendo login...");
-            // Auto login após registro bem-sucedido
+            setDebugInfo("✅ Conta criada! Fazendo login automático...");
+            
+            // Auto login após registro
             const result = await signIn("credentials", {
               email: formData.email,
               password: formData.password,
@@ -111,7 +129,7 @@ export default function Login() {
               router.replace("/dashboard");
             } else {
               setError("Conta criada com sucesso! Faça login com suas credenciais.");
-              setIsLogin(true); // Mudar para tela de login
+              setIsLogin(true);
             }
           } else {
             const data = await response.json().catch(() => ({}));
@@ -119,12 +137,12 @@ export default function Login() {
           }
         } catch (fetchError) {
           setError("Erro de conexão com o servidor. Verifique se o backend está funcionando.");
-          setDebugInfo(`❌ Erro: ${fetchError}`);
         }
       }
     } catch (err) {
       console.error("Erro de autenticação:", err);
       setError("Erro inesperado. Tente novamente.");
+      setDebugInfo(`❌ Erro: ${err}`);
     } finally {
       setLoading(false);
     }
@@ -133,20 +151,17 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     try {
       setDebugInfo("🔐 Iniciando login com Google...");
+      setError("");
       
-      // Verificar se o backend está funcionando primeiro
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
+      // Verificar backend primeiro
+      const workingBackend = await checkBackendStatus();
       
-      try {
-        const healthCheck = await fetch(`${backendUrl}/health`);
-        if (!healthCheck.ok) {
-          throw new Error("Backend indisponível");
-        }
-        setDebugInfo("✅ Backend funcionando, prosseguindo com Google...");
-      } catch (healthError) {
-        setError("Servidor temporariamente indisponível. Tente novamente em alguns momentos.");
+      if (!workingBackend) {
+        setError("Servidor temporariamente indisponível para login com Google.");
         return;
       }
+      
+      setDebugInfo("✅ Backend funcionando, prosseguindo com Google...");
       
       const result = await signIn("google", { 
         callbackUrl: "/dashboard",
@@ -155,72 +170,15 @@ export default function Login() {
       
       if (result?.error) {
         setError("Erro na autenticação com Google. Tente novamente.");
+        setDebugInfo(`❌ Erro Google: ${result.error}`);
       } else if (result?.url) {
+        setDebugInfo("✅ Redirecionando para Google...");
         window.location.href = result.url;
       }
     } catch (error) {
       console.error("Erro Google OAuth:", error);
       setError("Erro na autenticação com Google. Tente novamente.");
-    }
-  };
-
-  // Versão antiga do handleSubmit para fallback
-  const handleSubmitOld = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      if (isLogin) {
-        // Login with email/password  
-        const result = await signIn("credentials", {
-          email: formData.email,
-          password: formData.password,
-          redirect: false,
-        });
-
-        if (result?.error) {
-          setError("Email ou senha incorretos");
-        } else {
-          router.replace("/dashboard");
-        }
-      } else {
-        // Register new account
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: formData.email,
-            senha: formData.password,
-            nome: formData.name,
-          }),
-        });
-
-        if (response.ok) {
-          // Auto login after registration
-          const result = await signIn("credentials", {
-            email: formData.email,
-            password: formData.password,
-            redirect: false,
-          });
-
-          if (!result?.error) {
-            router.replace("/dashboard");
-          } else {
-            setError("Conta criada com sucesso! Faça login com suas credenciais.");
-          }
-        } else {
-          const data = await response.json();
-          setError(data.detail || "Erro ao criar conta");
-        }
-      }
-    } catch (err) {
-      console.error("Erro de autenticação:", err);
-      setError("Erro de conexão com o servidor. Verifique se o backend está funcionando.");
-    } finally {
-      setLoading(false);
+      setDebugInfo(`❌ Erro Google: ${error}`);
     }
   };
 
@@ -251,6 +209,36 @@ export default function Login() {
           <LucideArrowLeft className="mr-2 w-4 h-4 group-hover:-translate-x-1 transition-transform" />
           Voltar ao Início
         </Button>
+      </div>
+
+      {/* Backend Status Indicator */}
+      <div className="absolute top-6 right-6">
+        <div className="flex items-center gap-2">
+          {backendStatus === "online" ? (
+            <div className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
+              <LucideWifi className="w-4 h-4" />
+              <span>Servidor Online</span>
+            </div>
+          ) : backendStatus === "offline" ? (
+            <div className="flex items-center gap-2 bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm">
+              <LucideWifiOff className="w-4 h-4" />
+              <span>Servidor Offline</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm">
+              <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+              <span>Verificando...</span>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={checkBackendStatus}
+            className="text-xs"
+          >
+            Testar
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center justify-center min-h-screen p-4">
@@ -339,7 +327,7 @@ export default function Login() {
                   type="button"
                   className="w-full h-12 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-0 shadow-lg hover:shadow-xl group"
                   onClick={handleGoogleSignIn}
-                  disabled={loading}
+                  disabled={loading || backendStatus === "offline"}
                 >
                   <FaGoogle className="mr-3 group-hover:scale-110 transition-transform" />
                   {isLogin ? "Entrar" : "Criar conta"} com Google
@@ -374,6 +362,10 @@ export default function Login() {
                         value={formData.name}
                         onChange={(e) => setFormData({...formData, name: e.target.value})}
                         required={!isLogin}
+                        style={{
+                          color: '#111827 !important',
+                          backgroundColor: '#ffffff !important'
+                        }}
                       />
                     </div>
                   )}
@@ -387,11 +379,15 @@ export default function Login() {
                     </label>
                     <input
                       type="email"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-gray-50 focus:bg-white"
+                      className="input-high-contrast w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
                       placeholder="seu@email.com"
                       value={formData.email}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                       required
+                      style={{
+                        color: '#111827 !important',
+                        backgroundColor: '#ffffff !important'
+                      }}
                     />
                   </div>
 
@@ -405,12 +401,16 @@ export default function Login() {
                     <div className="relative">
                       <input
                         type={showPassword ? "text" : "password"}
-                        className="w-full px-4 py-3 pr-12 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-gray-50 focus:bg-white"
+                        className="input-high-contrast w-full px-4 py-3 pr-12 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
                         placeholder="••••••••"
                         value={formData.password}
                         onChange={(e) => setFormData({...formData, password: e.target.value})}
                         required
                         minLength={6}
+                        style={{
+                          color: '#111827 !important',
+                          backgroundColor: '#ffffff !important'
+                        }}
                       />
                       <button
                         type="button"
@@ -448,7 +448,7 @@ export default function Login() {
                   <Button
                     type="submit"
                     className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl group"
-                    disabled={loading}
+                    disabled={loading || backendStatus === "offline"}
                   >
                     {loading ? (
                       <div className="flex items-center">
@@ -475,6 +475,7 @@ export default function Login() {
                       onClick={() => {
                         setIsLogin(!isLogin);
                         setError("");
+                        setDebugInfo("");
                         setFormData({ email: "", password: "", name: "" });
                       }}
                     >

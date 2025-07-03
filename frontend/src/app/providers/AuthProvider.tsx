@@ -6,12 +6,14 @@ interface AuthContextType {
   backendJwt: string | null;
   isAuthenticated: boolean;
   loading: boolean;
+  user: any;
 }
 
 const AuthContext = createContext<AuthContextType>({
   backendJwt: null,
   isAuthenticated: false,
   loading: true,
+  user: null,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -20,10 +22,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const status = sessionData?.status || "unauthenticated";
   const [loading, setLoading] = useState(true);
   
-  
-  // Para desenvolvimento, usar um token mock se não houver sessão
-  const backendJwt = session?.backendJwt || (status === "authenticated" && session?.user?.email ? "mock-jwt-token" : null);
-  const isAuthenticated = !!backendJwt;
+  // Extrair JWT do backend da sessão
+  const backendJwt = session?.backendJwt || null;
+  const isAuthenticated = !!backendJwt && status === "authenticated";
+  const user = session?.user || null;
   
   useEffect(() => {
     if (status !== "loading") {
@@ -31,18 +33,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [status]);
   
-  // Debug info
-  if (process.env.NODE_ENV === 'development') {
-    console.log("Auth Debug:", {
-      status,
-      hasSession: !!session,
-      hasJWT: !!backendJwt,
-      email: session?.user?.email
-    });
-  }
+  // Debug info apenas em desenvolvimento
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔍 Auth Debug:", {
+        status,
+        hasSession: !!session,
+        hasJWT: !!backendJwt,
+        email: session?.user?.email,
+        isAuthenticated,
+        loading
+      });
+    }
+  }, [status, session, backendJwt, isAuthenticated, loading]);
   
   return (
-    <AuthContext.Provider value={{ backendJwt, isAuthenticated, loading }}>
+    <AuthContext.Provider value={{ 
+      backendJwt, 
+      isAuthenticated, 
+      loading: loading || status === "loading",
+      user 
+    }}>
       {children}
     </AuthContext.Provider>
   );
