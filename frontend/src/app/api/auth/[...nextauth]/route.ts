@@ -35,11 +35,14 @@ const authOptions: NextAuthOptions = {
       return session;
     },
     async redirect({ url, baseUrl }) {
-      // Sempre redirecionar para o dashboard após login bem-sucedido
-      if (url.startsWith("/api/auth")) {
-        return `${baseUrl}/dashboard`;
+      // Redirect logic
+      if (url.startsWith("/") && !url.startsWith("//")) {
+        return `${baseUrl}${url}`;
+      } else if (url.startsWith(baseUrl)) {
+        return url;
       }
-      return url.startsWith(baseUrl) ? url : baseUrl;
+      // Always redirect to dashboard after successful login
+      return `${baseUrl}/dashboard`;
     },
   },
   session: {

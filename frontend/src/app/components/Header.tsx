@@ -22,13 +22,14 @@ export default function Header() {
     { href: "/perfil", label: "Perfil", icon: <LucideUser size={18} /> },
   ];
 
-  if (status === "unauthenticated") {
-    return null; // Não mostrar header na página inicial
+  // Don't show header on home page or login page
+  if (pathname === "/" || pathname === "/login" || status === "unauthenticated") {
+    return null;
   }
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-lg border-b border-blue-100/60 shadow-sm">
+      <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-lg border-b border-blue-100/60 shadow-sm">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}

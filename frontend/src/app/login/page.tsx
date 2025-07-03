@@ -25,7 +25,7 @@ export default function Login() {
 
   // Redirect if already authenticated
   if (status === "authenticated") {
-    router.push("/dashboard");
+    router.replace("/dashboard");
     return null;
   }
 
@@ -46,7 +46,7 @@ export default function Login() {
         if (result?.error) {
           setError("Email ou senha incorretos");
         } else {
-          router.push("/dashboard");
+          router.replace("/dashboard");
         }
       } else {
         // Register new account
@@ -71,7 +71,7 @@ export default function Login() {
           });
 
           if (!result?.error) {
-            router.push("/dashboard");
+            router.replace("/dashboard");
           }
         } else {
           const data = await response.json();
