@@ -16,7 +16,7 @@ export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const links = [
-    { href: "/inicio", label: "Início", icon: <LucideHome size={18} /> },
+    { href: "/dashboard", label: "Início", icon: <LucideHome size={18} /> },
     { href: "/adicionar-produto", label: "Adicionar", icon: <LucidePlus size={18} /> },
     { href: "/alertas", label: "Alertas", icon: <LucideBell size={18} /> },
     { href: "/perfil", label: "Perfil", icon: <LucideUser size={18} /> },
@@ -33,7 +33,7 @@ export default function Header() {
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link href="/inicio" className="flex items-center gap-2 group">
+            <Link href="/dashboard" className="flex items-center gap-2 group">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
                 <FaShoppingCart className="text-white text-sm" />
               </div>

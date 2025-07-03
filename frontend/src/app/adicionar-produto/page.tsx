@@ -224,7 +224,7 @@ export default function AdicionarProduto() {
       }
       
       setSuccess(true);
-      setTimeout(() => router.push("/inicio"), 2000);
+      setTimeout(() => router.push("/dashboard"), 2000);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -290,7 +290,7 @@ export default function AdicionarProduto() {
             <p className="text-green-600 mb-4">🎉 Agora você receberá alertas sobre este produto.</p>
             <div className="text-sm text-gray-500 flex items-center justify-center gap-2">
               <LucideLoader className="w-4 h-4 animate-spin" />
-              Redirecionando para o início...
+              Redirecionando para o dashboard...
             </div>
           </Card>
         </main>

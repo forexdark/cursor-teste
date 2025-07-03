@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useProdutos } from "../hooks/useProdutos";
-import { LucidePlus, LucideRefreshCw, LucideTrendingUp, LucideTrendingDown, LucideEye, LucideExternalLink, LucidePackage, LucideSparkles, LucideBrain, LucideGift, LucideBell, LucideZap, LucideHeart, LucideStar, LucideTarget, LucideRocket, LucideCrown, LucideFire } from "lucide-react";
+import { LucidePlus, LucideRefreshCw, LucideTrendingUp, LucideTrendingDown, LucideEye, LucideExternalLink, LucidePackage, LucideSparkles, LucideBrain, LucideGift, LucideBell, LucideZap, LucideHeart, LucideStar, LucideTarget, LucideRocket, LucideCrown, LucideFlame } from "lucide-react";
 import { FaShoppingCart } from "react-icons/fa";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { Button } from "../components/ui/Button";
@@ -328,7 +328,7 @@ export default function Inicio() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="flex items-start gap-3 p-4 bg-white rounded-lg shadow-sm">
                     <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                      <LucideFire className="w-4 h-4 text-red-600" />
+                      <LucideFlame className="w-4 h-4 text-red-600" />
                     </div>
                     <div>
                       <h4 className="font-semibold text-gray-800 text-sm">Promoção Relâmpago!</h4>

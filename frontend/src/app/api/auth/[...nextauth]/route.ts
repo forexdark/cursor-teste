@@ -41,8 +41,8 @@ const authOptions: NextAuthOptions = {
       } else if (url.startsWith(baseUrl)) {
         return url;
       }
-      // Always redirect to inicio after successful login
-      return `${baseUrl}/inicio`;
+      // Always redirect to dashboard after successful login
+      return `${baseUrl}/dashboard`;
     },
   },
   session: {
