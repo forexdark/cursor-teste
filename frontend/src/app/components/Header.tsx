@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 import { LucideBell, LucideUser, LucidePlus, LucideHome, LucideLogOut } from "lucide-react";
 
 export default function Header() {
-  const { data: session } = useSession();
+  const sessionData = useSession() || {};
+  const { data, status } = sessionData;
   const pathname = usePathname();
 
   const links = [
@@ -32,7 +33,7 @@ export default function Header() {
         </nav>
       </div>
       <div className="flex items-center gap-4">
-        <span className="hidden md:block text-sm text-blue-900 font-semibold">{session?.user?.email}</span>
+        <span className="hidden md:block text-sm text-blue-900 font-semibold">{data?.user?.email}</span>
         <button
           className="flex items-center gap-1 px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 font-semibold transition"
           onClick={() => signOut({ callbackUrl: "/" })}
