@@ -252,6 +252,104 @@ body {
   text-wrap: balance;
 }
 
+/* Improved form contrast and accessibility */
+input, select, textarea {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  border: 2px solid #e5e7eb !important;
+  font-weight: 500 !important;
+}
+
+input::placeholder, select::placeholder, textarea::placeholder {
+  color: #4b5563 !important;
+  opacity: 1 !important;
+  font-weight: 400 !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  border-color: #3b82f6 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1) !important;
+  font-weight: 500 !important;
+}
+
+/* Dark text on light backgrounds */
+.form-input {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  border: 2px solid #e5e7eb !important;
+  font-weight: 500 !important;
+}
+
+.form-input:focus {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  border-color: #3b82f6 !important;
+  font-weight: 500 !important;
+}
+
+/* Ensure labels are visible */
+label {
+  color: #374151 !important;
+  font-weight: 500 !important;
+}
+
+/* High contrast input styles */
+.input-high-contrast {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  border: 2px solid #d1d5db !important;
+  font-weight: 600 !important;
+  font-size: 16px !important;
+}
+
+.input-high-contrast::placeholder {
+  color: #6b7280 !important;
+  font-weight: 400 !important;
+}
+
+.input-high-contrast:focus {
+  color: #111827 !important;
+  background-color: #ffffff !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1) !important;
+  font-weight: 600 !important;
+}</action>
+/* Better button contrast */
+button[type="submit"], .btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+  color: #ffffff !important;
+  border: none !important;
+}
+
+button[type="submit"]:hover, .btn-primary:hover {
+  background: linear-gradient(135deg, #1d4ed8, #1e40af) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Error message styling */
+.error-message {
+  color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+  border: 1px solid #fecaca !important;
+  padding: 12px 16px !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+}
+
+/* Success message styling */
+.success-message {
+  color: #059669 !important;
+  background-color: #f0fdf4 !important;
+  border: 1px solid #bbf7d0 !important;
+  padding: 12px 16px !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+}
+
 /* Better text contrast */
 .text-high-contrast {
   color: #1f2937 !important;

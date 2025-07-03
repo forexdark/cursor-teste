@@ -46,15 +46,19 @@ async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email já cadastrado")
     
     # Hash da senha
-    senha_hash = pwd_context.hash(usuario.senha) if usuario.senha else None
-    print(f"🔒 DEBUG: Senha hash gerado: {'Sim' if senha_hash else 'Não'}")
+    if not usuario.senha or len(usuario.senha) < 6:
+        raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 6 caracteres")
+        
+    senha_hash = pwd_context.hash(usuario.senha)
+    print(f"🔒 DEBUG: Senha hash gerado: Sim")
     
     # Criar usuário
     db_usuario = Usuario(
         email=usuario.email, 
         nome=usuario.nome, 
         senha_hash=senha_hash,
-        is_active=True
+        is_active=True,
+        criado_em=datetime.utcnow()
     )
     
     db.add(db_usuario)
@@ -79,14 +83,26 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     
     # Verificar senha (se existe hash)
-    if user.senha_hash and not pwd_context.verify(login_data.senha, user.senha_hash):
+    if not user.senha_hash:
+        print(f"❌ DEBUG: Usuário {login_data.email} não tem senha configurada")
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+        
+    if not pwd_context.verify(login_data.senha, user.senha_hash):
         print(f"❌ DEBUG: Senha incorreta para: {login_data.email}")
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
     
     print(f"✅ DEBUG: Login bem-sucedido: {user.email}")
     
     access_token = create_access_token(data={"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "nome": user.nome
+        }
+    }
 
 @router.post("/auth/google")
 async def login_google(token_id: str, db: Session = Depends(get_db)):

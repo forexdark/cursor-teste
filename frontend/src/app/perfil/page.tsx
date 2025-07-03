@@ -265,26 +265,38 @@ export default function Perfil() {
                         <label className="block text-sm font-medium text-gray-700 mb-2">Nome Completo</label>
                         <input
                           type="text"
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white text-gray-900 placeholder-gray-500"
                           defaultValue={session?.user?.name || ""}
                           placeholder="Seu nome completo"
+                          style={{
+                            color: '#111827 !important',
+                            backgroundColor: '#ffffff !important'
+                          }}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
                         <input
                           type="email"
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-50"
+                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-100 text-gray-700"
                           value={session?.user?.email || ""}
                           disabled
+                          style={{
+                            color: '#374151 !important',
+                            backgroundColor: '#f3f4f6 !important'
+                          }}
                         />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Telefone</label>
                         <input
                           type="tel"
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white text-gray-900 placeholder-gray-500"
                           placeholder="(11) 99999-9999"
+                          style={{
+                            color: '#111827 !important',
+                            backgroundColor: '#ffffff !important'
+                          }}
                         />
                       </div>
                       <Button className="w-full">
@@ -426,7 +438,11 @@ export default function Perfil() {
                         <select
                           value={tema}
                           onChange={(e) => setTema(e.target.value)}
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white text-gray-900"
+                          style={{
+                            color: '#111827 !important',
+                            backgroundColor: '#ffffff !important'
+                          }}
                         >
                           <option value="claro">Claro</option>
                           <option value="escuro">Escuro</option>
@@ -438,7 +454,11 @@ export default function Perfil() {
                         <select
                           value={idioma}
                           onChange={(e) => setIdioma(e.target.value)}
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white text-gray-900"
+                          style={{
+                            color: '#111827 !important',
+                            backgroundColor: '#ffffff !important'
+                          }}
                         >
                           <option value="pt-BR">Português (Brasil)</option>
                           <option value="en-US">English (US)</option>

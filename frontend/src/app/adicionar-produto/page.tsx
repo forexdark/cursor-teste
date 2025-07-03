@@ -379,7 +379,7 @@ export default function AdicionarProduto() {
                       <div className="relative">
                         <LucideSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 z-10" />
                         <input
-                          className="w-full pl-12 pr-12 py-4 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white/80 backdrop-blur-sm text-lg placeholder-gray-400 hover:border-blue-300"
+                          className="w-full pl-12 pr-12 py-4 border-2 border-gray-300 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-white text-lg text-gray-900 placeholder-gray-500 hover:border-blue-300"
                           type="text"
                           placeholder="Ex: iPhone 15, MacBook Air, PlayStation 5..."
                           value={query}
@@ -389,6 +389,10 @@ export default function AdicionarProduto() {
                           }}
                           onFocus={() => {
                             if (sugestoes.length > 0) setShowSuggestions(true);
+                          }}
+                          style={{
+                            color: '#111827 !important',
+                            backgroundColor: '#ffffff !important'
                           }}
                         />
                         {loading && (

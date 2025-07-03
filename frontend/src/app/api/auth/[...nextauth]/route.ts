@@ -17,12 +17,17 @@ const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
+          console.log("❌ Credenciais faltando");
           return null;
         }
+
+        console.log("🔐 Tentando autenticar:", credentials.email);
 
         try {
           // Tentar fazer login no backend - usar URL absoluta para produção
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
+          console.log("🌐 API URL:", apiUrl);
+          
           const res = await fetch(`${apiUrl}/auth/login`, {
             method: "POST",
             headers: {
@@ -34,17 +39,22 @@ const authOptions: NextAuthOptions = {
             }),
           });
 
+          console.log("📡 Response status:", res.status);
           if (res.ok) {
             const data = await res.json();
+            console.log("✅ Login bem-sucedido no backend");
             return {
               id: "1",
               email: credentials.email,
               name: credentials.email.split('@')[0],
               backendJwt: data.access_token,
             };
+          } else {
+            const errorData = await res.json().catch(() => ({}));
+            console.log("❌ Erro do backend:", errorData);
           }
         } catch (error) {
-          console.error("Erro na autenticação:", error);
+          console.error("❌ Erro na autenticação:", error);
         }
         
         return null;
@@ -55,6 +65,7 @@ const authOptions: NextAuthOptions = {
     async jwt({ token, account, profile, user }) {
       // Para Google OAuth
       if (account && profile?.email) {
+        console.log("🔍 Processando Google OAuth...");
         try {
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
           const res = await fetch(`${apiUrl}/auth/google`, {
@@ -67,17 +78,19 @@ const authOptions: NextAuthOptions = {
             token.backendJwt = data.access_token;
           } else {
             // Para desenvolvimento, usar um token mock
-            token.backendJwt = "mock-jwt-token";
+            console.log("⚠️ Google OAuth falhou, usando token mock");
+            token.backendJwt = `mock-jwt-${Date.now()}`;
           }
         } catch (error) {
-          console.error("Erro ao integrar com backend Google:", error);
+          console.error("❌ Erro Google OAuth:", error);
           // Para desenvolvimento, usar um token mock
-          token.backendJwt = "mock-jwt-token";
+          token.backendJwt = `mock-jwt-${Date.now()}`;
         }
       }
       
       // Para login com email/senha
       if (user?.backendJwt) {
+        console.log("✅ Usando JWT do backend");
         token.backendJwt = user.backendJwt;
       }
       
@@ -85,6 +98,7 @@ const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       (session as any).backendJwt = token.backendJwt;
+      console.log("🎫 Sessão configurada com JWT:", !!token.backendJwt);
       return session;
     },
     async redirect({ url, baseUrl }) {

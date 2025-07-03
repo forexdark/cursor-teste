@@ -22,6 +22,7 @@ export default function Login() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [debugInfo, setDebugInfo] = useState("");
 
   // Redirect if already authenticated
   if (status === "authenticated") {
@@ -33,10 +34,145 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setDebugInfo("");
 
     try {
       if (isLogin) {
-        // Login with email/password
+        setDebugInfo("🔐 Tentando fazer login...");
+        
+        try {
+          // Tentar login direto com o backend primeiro
+          const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
+          setDebugInfo(`🌐 Conectando com: ${backendUrl}`);
+          
+          const directLoginResponse = await fetch(`${backendUrl}/auth/login`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: formData.email,
+              senha: formData.password,
+            }),
+          });
+
+          if (directLoginResponse.ok) {
+            setDebugInfo("✅ Login no backend bem-sucedido, redirecionando...");
+            // Se o backend funcionar, usar NextAuth
+            const result = await signIn("credentials", {
+              email: formData.email,
+              password: formData.password,
+              redirect: false,
+            });
+
+            if (!result?.error) {
+              router.replace("/dashboard");
+            } else {
+              setError("Erro na sessão. Tente novamente.");
+            }
+          } else {
+            const errorData = await directLoginResponse.json().catch(() => ({}));
+            setError(errorData.detail || "Email ou senha incorretos");
+          }
+        } catch (fetchError) {
+          setError("Erro de conexão com o servidor. Verifique se o backend está funcionando.");
+          setDebugInfo(`❌ Erro: ${fetchError}`);
+        }
+      } else {
+        // Registro
+        setDebugInfo("📝 Tentando criar conta...");
+        
+        try {
+          const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
+          setDebugInfo(`🌐 Conectando com: ${backendUrl}`);
+          
+          const response = await fetch(`${backendUrl}/auth/register`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: formData.email,
+              senha: formData.password, 
+              nome: formData.name,
+            }),
+          });
+
+          if (response.ok) {
+            setDebugInfo("✅ Conta criada! Fazendo login...");
+            // Auto login após registro bem-sucedido
+            const result = await signIn("credentials", {
+              email: formData.email,
+              password: formData.password,
+              redirect: false,
+            });
+
+            if (!result?.error) {
+              router.replace("/dashboard");
+            } else {
+              setError("Conta criada com sucesso! Faça login com suas credenciais.");
+              setIsLogin(true); // Mudar para tela de login
+            }
+          } else {
+            const data = await response.json().catch(() => ({}));
+            setError(data.detail || "Erro ao criar conta. Tente novamente.");
+          }
+        } catch (fetchError) {
+          setError("Erro de conexão com o servidor. Verifique se o backend está funcionando.");
+          setDebugInfo(`❌ Erro: ${fetchError}`);
+        }
+      }
+    } catch (err) {
+      console.error("Erro de autenticação:", err);
+      setError("Erro inesperado. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setDebugInfo("🔐 Iniciando login com Google...");
+      
+      // Verificar se o backend está funcionando primeiro
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
+      
+      try {
+        const healthCheck = await fetch(`${backendUrl}/health`);
+        if (!healthCheck.ok) {
+          throw new Error("Backend indisponível");
+        }
+        setDebugInfo("✅ Backend funcionando, prosseguindo com Google...");
+      } catch (healthError) {
+        setError("Servidor temporariamente indisponível. Tente novamente em alguns momentos.");
+        return;
+      }
+      
+      const result = await signIn("google", { 
+        callbackUrl: "/dashboard",
+        redirect: false 
+      });
+      
+      if (result?.error) {
+        setError("Erro na autenticação com Google. Tente novamente.");
+      } else if (result?.url) {
+        window.location.href = result.url;
+      }
+    } catch (error) {
+      console.error("Erro Google OAuth:", error);
+      setError("Erro na autenticação com Google. Tente novamente.");
+    }
+  };
+
+  // Versão antiga do handleSubmit para fallback
+  const handleSubmitOld = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      if (isLogin) {
+        // Login with email/password  
         const result = await signIn("credentials", {
           email: formData.email,
           password: formData.password,
@@ -86,10 +222,6 @@ export default function Login() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleGoogleSignIn = () => {
-    signIn("google", { callbackUrl: "/dashboard" });
   };
 
   const benefits = [
@@ -227,11 +359,19 @@ export default function Login() {
 
               {/* Email/Password Form */}
               <form onSubmit={handleSubmit} className="space-y-4">
-                {!isLogin && (
+                          className="form-input w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 placeholder-gray-500 bg-white"
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       <div className="flex items-center gap-2">
-                        <FaUserPlus className="w-4 h-4" />
+                          className="form-input w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-900 placeholder-gray-500 bg-white"
+                          style={{
+                            color: '#111827 !important',
+                            backgroundColor: '#ffffff !important'
+                          }}
+                          style={{
+                            color: '#111827 !important',
+                            backgroundColor: '#ffffff !important'
+                          }}
                         Nome completo
                       </div>
                     </label>
@@ -296,8 +436,20 @@ export default function Login() {
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-700 text-sm font-medium">{error}</p>
+                  <div className="error-message p-4 bg-red-50 border-2 border-red-200 rounded-xl">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xs">!</span>
+                      </div>
+                      <span className="font-semibold text-red-800">Erro</span>
+                    </div>
+                    <p className="text-red-700 text-sm">{error}</p>
+                  </div>
+                )}
+
+                {debugInfo && process.env.NODE_ENV === 'development' && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-blue-700 text-xs font-mono">{debugInfo}</p>
                   </div>
                 )}
 

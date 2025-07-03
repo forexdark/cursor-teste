@@ -440,10 +440,14 @@ export default function ProdutoDetalhe() {
                           type="number"
                           step="0.01"
                           min="0"
-                          className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          className="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 placeholder-gray-500"
                           placeholder="Ex: 299.90"
                           value={novoAlerta}
                           onChange={(e) => setNovoAlerta(e.target.value)}
+                          style={{
+                            color: '#111827 !important',
+                            backgroundColor: '#ffffff !important'
+                          }}
                         />
                         <Button
                           onClick={criarAlerta}
