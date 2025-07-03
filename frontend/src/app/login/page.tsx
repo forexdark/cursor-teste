@@ -25,7 +25,7 @@ export default function Login() {
 
   // Redirect if already authenticated
   if (status === "authenticated") {
-    router.replace("/dashboard");
+    router.replace("/inicio");
     return null;
   }
 
@@ -46,7 +46,7 @@ export default function Login() {
         if (result?.error) {
           setError("Email ou senha incorretos");
         } else {
-          router.replace("/dashboard");
+          router.replace("/inicio");
         }
       } else {
         // Register new account
@@ -71,7 +71,7 @@ export default function Login() {
           });
 
           if (!result?.error) {
-            router.replace("/dashboard");
+            router.replace("/inicio");
           }
         } else {
           const data = await response.json();
@@ -86,7 +86,7 @@ export default function Login() {
   };
 
   const handleGoogleSignIn = () => {
-    signIn("google", { callbackUrl: "/dashboard" });
+    signIn("google", { callbackUrl: "/inicio" });
   };
 
   const benefits = [
