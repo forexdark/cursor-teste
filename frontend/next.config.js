@@ -6,6 +6,9 @@ const nextConfig = {
   },
   images: {
     domains: ['http2.mlstatic.com', 'mlstatic.com'],
+  env: {
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app',
+  },
     unoptimized: true
   },
   eslint: {

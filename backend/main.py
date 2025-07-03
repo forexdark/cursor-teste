@@ -4,7 +4,6 @@ from pathlib import Path
 
 # Adicionar o diretório backend ao Python path
 backend_dir = Path(__file__).parent
-sys.path.insert(0, str(backend_dir))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,7 +12,9 @@ from dotenv import load_dotenv
 import uvicorn
 from datetime import datetime, timezone
 import logging
-
+    "http://localhost:3000",
+    "https://vigia-meli.vercel.app",
+    "https://*.vercel.app"
 # Carregar variáveis de ambiente
 load_dotenv()
 
@@ -65,18 +66,12 @@ app.add_middleware(
 )
 
 # Importar e incluir rotas (com tratamento de erro)
-try:
-    from routers import router
-    app.include_router(router)
-    logger.info("✅ Rotas carregadas com sucesso")
-except ImportError as e:
     logger.error(f"❌ Erro ao importar rotas: {e}")
     # Criar rotas básicas como fallback
     @app.get("/")
     def root_fallback():
         return {
             "message": "VigIA Backend rodando! 🚀",
-            "status": "online (modo fallback)",
             "error": "Algumas rotas podem não estar disponíveis"
         }
 

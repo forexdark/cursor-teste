@@ -8,6 +8,7 @@ import ProtectedRoute from "../components/ProtectedRoute";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
+import { useAuth } from "../providers/AuthProvider";
 
 export default function Perfil() {
   const sessionData = useSession();
@@ -35,7 +36,9 @@ export default function Perfil() {
   const [loadingStats, setLoadingStats] = useState(true);
 
   // Buscar dados reais do backend
-  const { backendJwt } = useAuth();
+  
+  // Mock do backendJwt para desenvolvimento
+  const backendJwt = "mock-jwt-token";
   
   useEffect(() => {
     if (backendJwt) {

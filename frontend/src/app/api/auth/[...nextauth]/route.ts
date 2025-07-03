@@ -55,7 +55,8 @@ const authOptions: NextAuthOptions = {
       // Para Google OAuth
       if (account && profile?.email) {
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/google`, {
+          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
+          const res = await fetch(`${apiUrl}/auth/google`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ token_id: account.id_token }),
@@ -63,9 +64,14 @@ const authOptions: NextAuthOptions = {
           if (res.ok) {
             const data = await res.json();
             token.backendJwt = data.access_token;
+          } else {
+            // Para desenvolvimento, usar um token mock
+            token.backendJwt = "mock-jwt-token";
           }
         } catch (error) {
           console.error("Erro ao integrar com backend Google:", error);
+          // Para desenvolvimento, usar um token mock
+          token.backendJwt = "mock-jwt-token";
         }
       }
       

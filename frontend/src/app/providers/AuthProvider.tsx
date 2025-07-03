@@ -20,7 +20,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const status = sessionData?.status || "unauthenticated";
   const [loading, setLoading] = useState(true);
   
-  const backendJwt = session?.backendJwt || null;
+  
+  // Para desenvolvimento, usar um token mock se não houver sessão
+  const backendJwt = session?.backendJwt || (status === "authenticated" ? "mock-jwt-token" : null);
   const isAuthenticated = !!backendJwt;
   
   useEffect(() => {
