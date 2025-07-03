@@ -210,4 +210,91 @@ async def resumo_avaliacoes(produto_id: int, db: Session = Depends(get_db), curr
         raise HTTPException(status_code=404, detail="Produto não encontrado")
     avaliacoes = await buscar_avaliacoes_ml(produto.ml_id)
     resumo = await gerar_resumo_avaliacoes(avaliacoes)
-    return {"resumo": resumo} 
+    return {"resumo": resumo}
+
+# --- TESTES E DIAGNOSTICOS ---
+@router.get("/test/health")
+def test_health():
+    """Endpoint para testar se a API está funcionando"""
+    return {"status": "ok", "message": "Backend funcionando corretamente", "timestamp": datetime.utcnow()}
+
+@router.get("/test/mercadolivre", response_model=MLTestResponse)
+async def test_mercadolivre():
+    """Testar conectividade com a API do Mercado Livre"""
+    try:
+        # Testar busca simples
+        produto_teste = await buscar_produto_ml("MLB2707295210")  # iPhone de exemplo
+        
+        if produto_teste:
+            return MLTestResponse(
+                success=True,
+                message="Conexão com Mercado Livre OK",
+                data=produto_teste
+            )
+        else:
+            return MLTestResponse(
+                success=False,
+                message="Produto de teste não encontrado",
+                data={}
+            )
+    except Exception as e:
+        return MLTestResponse(
+            success=False,
+            message=f"Erro ao conectar com Mercado Livre: {str(e)}",
+            data={}
+        )
+
+@router.get("/test/search/{query}")
+async def test_search(query: str):
+    """Testar busca de produtos no Mercado Livre"""
+    try:
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=5"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "success": True,
+                "message": f"Busca por '{query}' realizada com sucesso",
+                "total_results": data.get("paging", {}).get("total", 0),
+                "results": data.get("results", [])[:3]  # Apenas 3 primeiros
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Erro HTTP {response.status_code}",
+                "data": {}
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Erro na busca: {str(e)}",
+            "data": {}
+        }
+
+@router.get("/test/database")
+def test_database(db: Session = Depends(get_db)):
+    """Testar conexão com banco de dados"""
+    try:
+        # Contar usuários
+        total_usuarios = db.query(Usuario).count()
+        total_produtos = db.query(ProdutoMonitorado).count()
+        total_alertas = db.query(Alerta).count()
+        
+        return {
+            "success": True,
+            "message": "Conexão com banco de dados OK",
+            "stats": {
+                "usuarios": total_usuarios,
+                "produtos": total_produtos,
+                "alertas": total_alertas
+            }
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Erro no banco de dados: {str(e)}",
+            "stats": {}
+        }

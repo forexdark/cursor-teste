@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from routers import router
 import uvicorn
 from scheduler import start_scheduler
+from datetime import datetime
 
 load_dotenv()
 
