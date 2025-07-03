@@ -24,6 +24,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [backendStatus, setBackendStatus] = useState<"unknown" | "online" | "offline">("unknown");
   const [debugInfo, setDebugInfo] = useState("");
+  const [googleConfigured, setGoogleConfigured] = useState(true);
 
   // Redirect if already authenticated
   if (status === "authenticated") {
@@ -32,10 +33,17 @@ export default function Login() {
   }
 
   // Verificar status do backend
+  const checkGoogleConfig = () => {
+    // Verificar se as variáveis de ambiente do Google estão configuradas
+    const hasGoogleConfig = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 
+                           typeof window !== 'undefined';
+    setGoogleConfigured(hasGoogleConfig);
+  };
   const checkBackendStatus = async () => {
     const apiUrls = [
+      'https://vigia-meli.up.railway.app',
       process.env.NEXT_PUBLIC_API_URL,
-      'https://vigia-meli.up.railway.app'
+      'http://localhost:8000'
     ].filter(Boolean);
 
     setDebugInfo("🔍 Verificando status do backend...");
@@ -43,10 +51,17 @@ export default function Login() {
     for (const apiUrl of apiUrls) {
       try {
         setDebugInfo(`🌐 Testando: ${apiUrl}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
         const response = await fetch(`${apiUrl}/health`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal
         });
+        
+        clearTimeout(timeoutId);
         
         if (response.ok) {
           setBackendStatus("online");
@@ -153,15 +168,13 @@ export default function Login() {
       setDebugInfo("🔐 Iniciando login com Google...");
       setError("");
       
-      // Verificar backend primeiro
-      const workingBackend = await checkBackendStatus();
-      
-      if (!workingBackend) {
-        setError("Servidor temporariamente indisponível para login com Google.");
+      // Verificar se Google está configurado
+      if (!googleConfigured) {
+        setError("Google OAuth não está configurado. Entre em contato com o suporte.");
         return;
       }
       
-      setDebugInfo("✅ Backend funcionando, prosseguindo com Google...");
+      setDebugInfo("✅ Iniciando fluxo Google OAuth...");
       
       const result = await signIn("google", { 
         callbackUrl: "/dashboard",
@@ -169,11 +182,19 @@ export default function Login() {
       });
       
       if (result?.error) {
-        setError("Erro na autenticação com Google. Tente novamente.");
+        if (result.error === "OAuthCallback") {
+          setError("Erro de configuração do Google OAuth. Verifique se o domínio está autorizado.");
+        } else if (result.error === "OAuthAccountNotLinked") {
+          setError("Esta conta Google já está vinculada a outro usuário.");
+        } else {
+          setError("Erro na autenticação com Google. Tente novamente.");
+        }
         setDebugInfo(`❌ Erro Google: ${result.error}`);
       } else if (result?.url) {
         setDebugInfo("✅ Redirecionando para Google...");
         window.location.href = result.url;
+      } else {
+        setDebugInfo("🔄 Aguardando resposta do Google...");
       }
     } catch (error) {
       console.error("Erro Google OAuth:", error);
@@ -182,6 +203,11 @@ export default function Login() {
     }
   };
 
+  // Verificar configurações ao carregar
+  useState(() => {
+    checkGoogleConfig();
+    checkBackendStatus();
+  });
   const benefits = [
     {
       icon: <LucideZap className="w-5 h-5 text-yellow-500" />,
@@ -325,15 +351,27 @@ export default function Login() {
                 {/* Google Sign In */}
                 <Button
                   type="button"
-                  className="w-full h-12 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-0 shadow-lg hover:shadow-xl group"
+                  className={`w-full h-12 text-white border-0 shadow-lg hover:shadow-xl group ${
+                    googleConfigured 
+                      ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700" 
+                      : "bg-gray-400 cursor-not-allowed"
+                  }`}
                   onClick={handleGoogleSignIn}
-                  disabled={loading || backendStatus === "offline"}
+                  disabled={loading || !googleConfigured}
                 >
                   <FaGoogle className="mr-3 group-hover:scale-110 transition-transform" />
-                  {isLogin ? "Entrar" : "Criar conta"} com Google
+                  {!googleConfigured 
+                    ? "Google OAuth não configurado" 
+                    : `${isLogin ? "Entrar" : "Criar conta"} com Google`
+                  }
                   <LucideArrowRight className="ml-auto w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </Button>
 
+                {!googleConfigured && (
+                  <div className="text-center text-xs text-gray-500 bg-yellow-50 p-2 rounded">
+                    ⚠️ Google OAuth está sendo configurado. Use login com email por enquanto.
+                  </div>
+                )}
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t border-gray-300" />
@@ -448,12 +486,12 @@ export default function Login() {
                   <Button
                     type="submit"
                     className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl group"
-                    disabled={loading || backendStatus === "offline"}
+                    disabled={loading}
                   >
                     {loading ? (
                       <div className="flex items-center">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                        Processando...
+                        {backendStatus === "offline" ? "Conectando..." : "Processando..."}
                       </div>
                     ) : (
                       <>

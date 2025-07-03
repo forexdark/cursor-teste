@@ -3,12 +3,37 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { NextAuthOptions } from "next-auth";
 
+// Validar variáveis de ambiente críticas
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET;
+const NEXTAUTH_URL = process.env.NEXTAUTH_URL || "https://vigia-meli.vercel.app";
+
+console.log("🔍 NextAuth Environment Check:", {
+  hasGoogleClientId: !!GOOGLE_CLIENT_ID,
+  hasGoogleClientSecret: !!GOOGLE_CLIENT_SECRET,
+  hasNextAuthSecret: !!NEXTAUTH_SECRET,
+  nextAuthUrl: NEXTAUTH_URL,
+  nodeEnv: process.env.NODE_ENV
+});
+
 const authOptions: NextAuthOptions = {
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
+    // Google Provider - só adicionar se as credenciais existirem
+    ...(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET ? [
+      GoogleProvider({
+        clientId: GOOGLE_CLIENT_ID,
+        clientSecret: GOOGLE_CLIENT_SECRET,
+        authorization: {
+          params: {
+            prompt: "consent",
+            access_type: "offline",
+            response_type: "code"
+          }
+        }
+      })
+    ] : []),
+    
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -24,21 +49,24 @@ const authOptions: NextAuthOptions = {
         console.log("🔐 Tentando autenticar:", credentials.email);
 
         try {
-          // URLs de fallback para desenvolvimento e produção
-          const apiUrls = [
-            process.env.NEXT_PUBLIC_API_URL,
+          // URLs de backend em ordem de preferência
+          const backendUrls = [
             'https://vigia-meli.up.railway.app',
+            process.env.NEXT_PUBLIC_API_URL,
             'http://localhost:8000'
           ].filter(Boolean);
 
-          let loginSuccess = false;
-          let userData = null;
+          let loginData = null;
+          let workingUrl = null;
 
-          // Tentar cada URL até uma funcionar
-          for (const apiUrl of apiUrls) {
+          // Tentar cada URL de backend
+          for (const apiUrl of backendUrls) {
             try {
-              console.log("🌐 Tentando API:", apiUrl);
+              console.log("🌐 Tentando backend:", apiUrl);
               
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 segundos
+
               const res = await fetch(`${apiUrl}/auth/login`, {
                 method: "POST",
                 headers: {
@@ -48,35 +76,41 @@ const authOptions: NextAuthOptions = {
                   email: credentials.email,
                   senha: credentials.password,
                 }),
-                timeout: 10000, // 10 segundos
+                signal: controller.signal
               });
+
+              clearTimeout(timeoutId);
 
               if (res.ok) {
                 const data = await res.json();
-                console.log("✅ Login bem-sucedido no backend:", apiUrl);
-                userData = data;
-                loginSuccess = true;
+                console.log("✅ Login bem-sucedido:", apiUrl);
+                loginData = data;
+                workingUrl = apiUrl;
                 break;
               } else {
                 const errorData = await res.json().catch(() => ({}));
                 console.log("❌ Erro HTTP:", res.status, errorData);
+                if (res.status === 401) {
+                  // Se 401, credenciais incorretas - não tentar outras URLs
+                  break;
+                }
               }
             } catch (apiError) {
               console.log("❌ Erro na API:", apiUrl, apiError);
-              continue; // Tentar próxima URL
+              continue;
             }
           }
 
-          if (loginSuccess && userData) {
+          if (loginData && workingUrl) {
             return {
-              id: userData.user?.id?.toString() || "1",
+              id: loginData.user?.id?.toString() || "1",
               email: credentials.email,
-              name: userData.user?.nome || credentials.email.split('@')[0],
-              backendJwt: userData.access_token,
+              name: loginData.user?.nome || credentials.email.split('@')[0],
+              backendJwt: loginData.access_token,
+              backendUrl: workingUrl
             };
           } else {
-            // Se todas as URLs falharam, retornar erro
-            console.log("❌ Todas as tentativas de conexão falharam");
+            console.log("❌ Falha em todos os backends ou credenciais incorretas");
             return null;
           }
         } catch (error) {
@@ -89,33 +123,45 @@ const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, account, profile, user }) {
       // Para Google OAuth
-      if (account && profile?.email) {
+      if (account?.provider === "google" && profile?.email) {
         console.log("🔍 Processando Google OAuth...");
         try {
-          // URLs de fallback
-          const apiUrls = [
-            process.env.NEXT_PUBLIC_API_URL,
-            'https://vigia-meli.up.railway.app'
+          const backendUrls = [
+            'https://vigia-meli.up.railway.app',
+            process.env.NEXT_PUBLIC_API_URL
           ].filter(Boolean);
 
           let googleSuccess = false;
           
-          for (const apiUrl of apiUrls) {
+          for (const apiUrl of backendUrls) {
             try {
-              console.log("🌐 Tentando Google OAuth com:", apiUrl);
+              console.log("🌐 Tentando Google OAuth:", apiUrl);
+              
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 8000);
+
               const res = await fetch(`${apiUrl}/auth/google`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token_id: account.id_token }),
-                timeout: 10000,
+                body: JSON.stringify({ 
+                  token_id: account.id_token,
+                  email: profile.email,
+                  name: profile.name
+                }),
+                signal: controller.signal
               });
+              
+              clearTimeout(timeoutId);
               
               if (res.ok) {
                 const data = await res.json();
                 token.backendJwt = data.access_token;
+                token.backendUrl = apiUrl;
                 console.log("✅ Google OAuth bem-sucedido");
                 googleSuccess = true;
                 break;
+              } else {
+                console.log("⚠️ Google OAuth falhou:", res.status);
               }
             } catch (apiError) {
               console.log("❌ Erro Google OAuth:", apiUrl, apiError);
@@ -124,32 +170,45 @@ const authOptions: NextAuthOptions = {
           }
           
           if (!googleSuccess) {
-            console.log("⚠️ Google OAuth falhou, usando token mock");
-            // Token mock mais robusto para desenvolvimento
-            token.backendJwt = `mock-jwt-google-${profile?.email?.split('@')[0]}-${Date.now()}`;
+            // Para desenvolvimento, criar um mock token válido
+            if (process.env.NODE_ENV === 'development') {
+              console.log("🔧 Usando token mock para desenvolvimento");
+              token.backendJwt = `mock-google-${Date.now()}`;
+              token.backendUrl = 'mock-development';
+            } else {
+              console.log("❌ Google OAuth falhou em produção");
+              return token; // Falhar silenciosamente
+            }
           }
         } catch (error) {
           console.error("❌ Erro Google OAuth:", error);
-          token.backendJwt = `mock-jwt-google-error-${Date.now()}`;
+          if (process.env.NODE_ENV === 'development') {
+            token.backendJwt = `mock-google-error-${Date.now()}`;
+          }
         }
       }
       
-      // Para login com email/senha
+      // Para login com credenciais
       if (user?.backendJwt) {
-        console.log("✅ Usando JWT do backend");
+        console.log("✅ Usando JWT do backend de credenciais");
         token.backendJwt = user.backendJwt;
+        token.backendUrl = user.backendUrl;
       }
       
       return token;
     },
     async session({ session, token }) {
       (session as any).backendJwt = token.backendJwt;
-      console.log("🎫 Sessão configurada com JWT:", !!token.backendJwt);
+      (session as any).backendUrl = token.backendUrl;
+      console.log("🎫 Sessão configurada:", {
+        hasJwt: !!token.backendJwt,
+        backendUrl: token.backendUrl,
+        email: session.user?.email
+      });
       return session;
     },
     async redirect({ url, baseUrl }) {
-      // Usar NEXTAUTH_URL se disponível, senão usar baseUrl
-      const redirectBase = process.env.NEXTAUTH_URL || baseUrl;
+      const redirectBase = NEXTAUTH_URL || baseUrl;
       
       if (url.startsWith("/") && !url.startsWith("//")) {
         return `${redirectBase}${url}`;
@@ -167,6 +226,7 @@ const authOptions: NextAuthOptions = {
     error: "/login",
   },
   debug: process.env.NODE_ENV === 'development',
+  secret: NEXTAUTH_SECRET,
 };
 
 const handler = NextAuth(authOptions);
