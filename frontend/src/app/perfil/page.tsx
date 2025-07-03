@@ -438,11 +438,7 @@ export default function Perfil() {
                         <select
                           value={tema}
                           onChange={(e) => setTema(e.target.value)}
-                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white text-gray-900"
-                          style={{
-                            color: '#111827 !important',
-                            backgroundColor: '#ffffff !important'
-                          }}
+                          className="input-high-contrast w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
                         >
                           <option value="claro">Claro</option>
                           <option value="escuro">Escuro</option>
@@ -454,11 +450,7 @@ export default function Perfil() {
                         <select
                           value={idioma}
                           onChange={(e) => setIdioma(e.target.value)}
-                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white text-gray-900"
-                          style={{
-                            color: '#111827 !important',
-                            backgroundColor: '#ffffff !important'
-                          }}
+                          className="input-high-contrast w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all bg-white"
                         >
                           <option value="pt-BR">Português (Brasil)</option>
                           <option value="en-US">English (US)</option>

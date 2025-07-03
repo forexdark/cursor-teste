@@ -144,7 +144,9 @@ export default function Login() {
         }
         setDebugInfo("✅ Backend funcionando, prosseguindo com Google...");
       } catch (healthError) {
-        setError("Servidor temporariamente indisponível. Tente novamente em alguns momentos.");
+        console.error("Health check falhou:", healthError);
+        setError("Servidor temporariamente indisponível. Tente login com email/senha ou aguarde alguns momentos.");
+        setDebugInfo(`❌ Health check falhou: ${healthError.message}`);
         return;
       }
       
@@ -154,13 +156,16 @@ export default function Login() {
       });
       
       if (result?.error) {
+        console.error("Erro Google Sign-in:", result.error);
         setError("Erro na autenticação com Google. Tente novamente.");
+        setDebugInfo(`❌ Google Sign-in erro: ${result.error}`);
       } else if (result?.url) {
         window.location.href = result.url;
       }
     } catch (error) {
       console.error("Erro Google OAuth:", error);
       setError("Erro na autenticação com Google. Tente novamente.");
+      setDebugInfo(`❌ Google OAuth exception: ${error}`);
     }
   };
 

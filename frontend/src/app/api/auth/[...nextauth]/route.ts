@@ -68,6 +68,7 @@ const authOptions: NextAuthOptions = {
         console.log("🔍 Processando Google OAuth...");
         try {
           const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://vigia-meli.up.railway.app';
+          console.log("🌐 Tentando conectar Google OAuth com:", apiUrl);
           const res = await fetch(`${apiUrl}/auth/google`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -76,15 +77,18 @@ const authOptions: NextAuthOptions = {
           if (res.ok) {
             const data = await res.json();
             token.backendJwt = data.access_token;
+            console.log("✅ Google OAuth bem-sucedido");
           } else {
-            // Para desenvolvimento, usar um token mock
-            console.log("⚠️ Google OAuth falhou, usando token mock");
-            token.backendJwt = `mock-jwt-${Date.now()}`;
+            console.log("⚠️ Google OAuth falhou, status:", res.status);
+            const errorText = await res.text().catch(() => "Erro desconhecido");
+            console.log("❌ Erro Google OAuth:", errorText);
+            // Para desenvolvimento, criar token mock mais robusto
+            token.backendJwt = `mock-jwt-google-${profile?.email?.split('@')[0]}-${Date.now()}`;
           }
         } catch (error) {
           console.error("❌ Erro Google OAuth:", error);
-          // Para desenvolvimento, usar um token mock
-          token.backendJwt = `mock-jwt-${Date.now()}`;
+          // Token mock para manter funcionalidade
+          token.backendJwt = `mock-jwt-google-error-${Date.now()}`;
         }
       }
       
