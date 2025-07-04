@@ -32,6 +32,44 @@ class MLTokenManager:
         }
         
         print(f"🔐 Token armazenado para user {user_id}, expira em {expires_at}")
+    
+    @staticmethod
+    def get_token(user_id: int) -> Optional[str]:
+        """Recupera o token válido do usuário"""
+        if user_id not in ml_tokens:
+            return None
+        
+        token_info = ml_tokens[user_id]
+        
+        # Verificar se o token expirou
+        if datetime.now() >= token_info["expires_at"]:
+            # Token expirado, tentar renovar
+            return MLTokenManager.refresh_token(user_id)
+        
+        return token_info["access_token"]
+    
+    @staticmethod
+    def refresh_token(user_id: int) -> Optional[str]:
+        """Renova o token OAuth usando refresh_token"""
+        if user_id not in ml_tokens:
+            return None
+        
+        token_info = ml_tokens[user_id]
+        refresh_token = token_info.get("refresh_token")
+        
+        if not refresh_token:
+            return None
+        
+        # TODO: Implementar refresh do token
+        # Por enquanto, remover token expirado
+        del ml_tokens[user_id]
+        return None
+    
+    @staticmethod
+    def revoke_token(user_id: int):
+        """Remove o token do usuário"""
+        if user_id in ml_tokens:
+            del ml_tokens[user_id]
 
 async def buscar_produto_ml(ml_id: str, user_id: int = None):
     """
@@ -91,44 +129,6 @@ async def buscar_produto_ml(ml_id: str, user_id: int = None):
     except Exception as e:
         print(f"❌ Erro na busca pública: {e}")
         return None
-    
-    @staticmethod
-    def get_token(user_id: int) -> Optional[str]:
-        """Recupera o token válido do usuário"""
-        if user_id not in ml_tokens:
-            return None
-        
-        token_info = ml_tokens[user_id]
-        
-        # Verificar se o token expirou
-        if datetime.now() >= token_info["expires_at"]:
-            # Token expirado, tentar renovar
-            return MLTokenManager.refresh_token(user_id)
-        
-        return token_info["access_token"]
-    
-    @staticmethod
-    def refresh_token(user_id: int) -> Optional[str]:
-        """Renova o token OAuth usando refresh_token"""
-        if user_id not in ml_tokens:
-            return None
-        
-        token_info = ml_tokens[user_id]
-        refresh_token = token_info.get("refresh_token")
-        
-        if not refresh_token:
-            return None
-        
-        # TODO: Implementar refresh do token
-        # Por enquanto, remover token expirado
-        del ml_tokens[user_id]
-        return None
-    
-    @staticmethod
-    def revoke_token(user_id: int):
-        """Remove o token do usuário"""
-        if user_id in ml_tokens:
-            del ml_tokens[user_id]
 
 def generate_pkce_pair():
     """Gera code_verifier e code_challenge para PKCE"""
