@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Badge } from "./ui/Badge";
 import { LucideShield, LucideExternalLink, LucideCheck, LucideX, LucideLoader, LucideZap, LucideKey, LucideWifi, LucideWifiOff, LucideAlertTriangle } from "lucide-react";
 import { useAuth } from "../providers/AuthProvider";
+import { useSession } from "next-auth/react";
 
 interface MLAuthButtonProps {
   onAuthSuccess?: () => void;
@@ -12,12 +13,34 @@ interface MLAuthButtonProps {
 }
 
 export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthButtonProps) {
-  const { backendJwt } = useAuth();
+  const { backendJwt, isAuthenticated, debugInfo } = useAuth();
+  const sessionData = useSession();
+  const session = sessionData?.data;
+  const status = sessionData?.status;
+  
   const [loading, setLoading] = useState(false);
   const [authStatus, setAuthStatus] = useState<'unknown' | 'authorized' | 'unauthorized'>('unknown');
   const [error, setError] = useState<string | null>(null);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string>("");
+  const [localDebugInfo, setLocalDebugInfo] = useState<string>("");
+
+  // Determinar se o usuário está realmente logado
+  const userLoggedIn = isAuthenticated || (status === "authenticated" && !!session?.user?.email);
+  
+  // Gerar um JWT temporário para fazer as requisições se necessário
+  const getWorkingJwt = () => {
+    if (backendJwt) {
+      return backendJwt;
+    }
+    // Se está autenticado mas não tem JWT, tentar obter um
+    if (userLoggedIn && session?.user?.email) {
+      // Para desenvolvimento, criar um mock
+      if (process.env.NODE_ENV === 'development') {
+        return `mock-jwt-${session.user.email}-${Date.now()}`;
+      }
+    }
+    return null;
+  };
 
   // Verificar se o backend está online
   const checkBackendStatus = async () => {
@@ -32,24 +55,32 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
       setBackendOnline(isOnline);
       
       if (isOnline) {
-        setDebugInfo("✅ Backend online");
+        setLocalDebugInfo("✅ Backend online");
       } else {
-        setDebugInfo(`❌ Backend retornou ${response.status}`);
+        setLocalDebugInfo(`❌ Backend retornou ${response.status}`);
       }
       
       return isOnline;
     } catch (error) {
       setBackendOnline(false);
-      setDebugInfo(`❌ Erro de conexão: ${error}`);
+      setLocalDebugInfo(`❌ Erro de conexão: ${error}`);
       return false;
     }
   };
 
   // Verificar status da autorização ML
   const checkAuthStatus = async () => {
-    if (!backendJwt) {
+    const workingJwt = getWorkingJwt();
+    
+    if (!userLoggedIn) {
       setAuthStatus('unauthorized');
-      setDebugInfo("❌ Usuário não está logado");
+      setLocalDebugInfo("❌ Usuário não está logado");
+      return;
+    }
+    
+    if (!workingJwt) {
+      setAuthStatus('unauthorized');
+      setLocalDebugInfo("❌ JWT não disponível");
       return;
     }
     
@@ -60,46 +91,54 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
     }
     
     try {
-      setDebugInfo("🔍 Verificando status ML...");
+      setLocalDebugInfo("🔍 Verificando status ML...");
       
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/mercadolivre/status`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${backendJwt}`,
+          'Authorization': `Bearer ${workingJwt}`,
           'Content-Type': 'application/json',
         },
       });
       
-      setDebugInfo(`📊 Status response: ${response.status}`);
+      setLocalDebugInfo(`📊 Status response: ${response.status}`);
       
       if (response.ok) {
         const data = await response.json();
         setAuthStatus(data.authorized ? 'authorized' : 'unauthorized');
         setError(null);
-        setDebugInfo(`✅ Status ML: ${data.authorized ? 'Autorizado' : 'Não autorizado'}`);
+        setLocalDebugInfo(`✅ Status ML: ${data.authorized ? 'Autorizado' : 'Não autorizado'}`);
       } else if (response.status === 401) {
         setAuthStatus('unauthorized');
         setError("Sessão expirada. Faça login novamente.");
-        setDebugInfo("❌ Token JWT inválido");
+        setLocalDebugInfo("❌ Token JWT inválido");
       } else {
         setAuthStatus('unauthorized');
         const errorText = await response.text().catch(() => 'Erro desconhecido');
         setError(`Erro ${response.status}: ${errorText}`);
-        setDebugInfo(`❌ Erro ${response.status}: ${errorText}`);
+        setLocalDebugInfo(`❌ Erro ${response.status}: ${errorText}`);
       }
     } catch (error) {
       console.error("Erro ao verificar status ML:", error);
       setAuthStatus('unauthorized');
       setError("Erro de conexão com o servidor");
-      setDebugInfo(`❌ Erro de rede: ${error}`);
+      setLocalDebugInfo(`❌ Erro de rede: ${error}`);
     }
   };
 
   // Iniciar autorização OAuth do ML
   const handleAuthorize = async () => {
-    if (!backendJwt) {
+    const workingJwt = getWorkingJwt();
+    
+    if (!userLoggedIn) {
       setError("Você precisa estar logado para autorizar o Mercado Livre");
-      setDebugInfo("❌ JWT não encontrado");
+      setLocalDebugInfo("❌ Usuário não logado");
+      return;
+    }
+
+    if (!workingJwt) {
+      setError("Sessão expirada. Faça login novamente.");
+      setLocalDebugInfo("❌ JWT não disponível");
       return;
     }
 
@@ -111,26 +150,26 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
 
     setLoading(true);
     setError(null);
-    setDebugInfo("🚀 Iniciando autorização ML...");
+    setLocalDebugInfo("🚀 Iniciando autorização ML...");
 
     try {
       // Obter URL de autorização
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/mercadolivre/url`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${backendJwt}`,
+          'Authorization': `Bearer ${workingJwt}`,
           'Content-Type': 'application/json',
         },
       });
 
-      setDebugInfo(`📡 URL response: ${response.status}`);
+      setLocalDebugInfo(`📡 URL response: ${response.status}`);
 
       if (response.ok) {
         const data = await response.json();
-        setDebugInfo(`📋 Response data: ${JSON.stringify(data).substring(0, 100)}...`);
+        setLocalDebugInfo(`📋 Response data recebida`);
         
         if (data.success && data.auth_url) {
-          setDebugInfo("🌐 Abrindo popup de autorização...");
+          setLocalDebugInfo("🌐 Abrindo popup de autorização...");
           
           // Abrir popup para autorização
           const popup = window.open(
@@ -142,17 +181,16 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
           
           if (!popup) {
             setError("Popup bloqueado. Permita popups para este site e tente novamente.");
-            setDebugInfo("❌ Popup bloqueado");
+            setLocalDebugInfo("❌ Popup bloqueado");
             return;
           }
           
-          // Monitorar fechamento do popup
           // Escutar mensagens do popup
           const handleMessage = (event: MessageEvent) => {
             if (event.origin !== window.location.origin) return;
             
             if (event.data.type === 'ML_AUTH_SUCCESS') {
-              setDebugInfo("✅ Autorização ML bem-sucedida via postMessage");
+              setLocalDebugInfo("✅ Autorização ML bem-sucedida via postMessage");
               setAuthStatus('authorized');
               setError(null);
               if (onAuthSuccess) onAuthSuccess();
@@ -170,7 +208,7 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
             if (popup.closed) {
               clearInterval(checkClosed);
               window.removeEventListener('message', handleMessage);
-              setDebugInfo("🔄 Popup fechado, verificando status...");
+              setLocalDebugInfo("🔄 Popup fechado, verificando status...");
               // Aguardar um pouco e verificar status
               setTimeout(() => {
                 checkAuthStatus();
@@ -185,22 +223,22 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
               popup.close();
               clearInterval(checkClosed);
               window.removeEventListener('message', handleMessage);
-              setDebugInfo("⏰ Popup fechado por timeout");
+              setLocalDebugInfo("⏰ Popup fechado por timeout");
             }
           }, 300000); // 5 minutos
           
         } else {
           setError(data.message || "Erro ao gerar URL de autorização");
-          setDebugInfo(`❌ URL inválida: ${JSON.stringify(data)}`);
+          setLocalDebugInfo(`❌ URL inválida: ${JSON.stringify(data)}`);
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.detail || errorData.message || `Erro HTTP ${response.status}`);
-        setDebugInfo(`❌ Erro na requisição: ${response.status} - ${JSON.stringify(errorData)}`);
+        setLocalDebugInfo(`❌ Erro na requisição: ${response.status} - ${JSON.stringify(errorData)}`);
       }
     } catch (error) {
       setError("Erro de conexão com o servidor");
-      setDebugInfo(`❌ Erro de rede: ${error}`);
+      setLocalDebugInfo(`❌ Erro de rede: ${error}`);
       console.error("Erro ao autorizar ML:", error);
     } finally {
       setLoading(false);
@@ -209,16 +247,17 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
 
   // Revogar autorização
   const handleRevoke = async () => {
-    if (!backendJwt) return;
+    const workingJwt = getWorkingJwt();
+    if (!workingJwt) return;
 
     setLoading(true);
-    setDebugInfo("🗑️ Revogando autorização...");
+    setLocalDebugInfo("🗑️ Revogando autorização...");
     
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/mercadolivre/revoke`, {
         method: 'DELETE',
         headers: { 
-          'Authorization': `Bearer ${backendJwt}`,
+          'Authorization': `Bearer ${workingJwt}`,
           'Content-Type': 'application/json',
         }
       });
@@ -226,15 +265,15 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
       if (response.ok) {
         setAuthStatus('unauthorized');
         setError(null);
-        setDebugInfo("✅ Autorização revogada");
+        setLocalDebugInfo("✅ Autorização revogada");
       } else {
         setError("Erro ao revogar autorização");
-        setDebugInfo(`❌ Erro ao revogar: ${response.status}`);
+        setLocalDebugInfo(`❌ Erro ao revogar: ${response.status}`);
       }
     } catch (error) {
       console.error("Erro ao revogar autorização:", error);
       setError("Erro de conexão");
-      setDebugInfo(`❌ Erro na revogação: ${error}`);
+      setLocalDebugInfo(`❌ Erro na revogação: ${error}`);
     } finally {
       setLoading(false);
     }
@@ -242,13 +281,13 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
 
   // Verificar status na montagem
   useEffect(() => {
-    if (backendJwt) {
+    if (userLoggedIn) {
       checkAuthStatus();
     } else {
       setAuthStatus('unauthorized');
-      setDebugInfo("❌ Usuário não logado");
+      setLocalDebugInfo("❌ Usuário não logado");
     }
-  }, [backendJwt]);
+  }, [userLoggedIn, backendJwt]);
 
   if (compact) {
     return (
@@ -273,17 +312,19 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
         ) : (
           <Button
             onClick={handleAuthorize}
-            disabled={loading || backendOnline === false || !backendJwt}
+            disabled={loading || backendOnline === false || !userLoggedIn}
             variant="outline"
             size="sm"
-            className="border-yellow-300 text-yellow-700 hover:bg-yellow-50"
+            className={`border-yellow-300 text-yellow-700 hover:bg-yellow-50 ${
+              !userLoggedIn ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
             {loading ? (
               <LucideLoader className="w-4 h-4 animate-spin mr-2" />
             ) : (
               <LucideKey className="w-4 h-4 mr-2" />
             )}
-            {!backendJwt ? "Faça Login" : 
+            {!userLoggedIn ? "Faça Login" : 
              backendOnline === false ? "Backend Offline" : "Autorizar ML"}
           </Button>
         )}
@@ -332,7 +373,7 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
         )}
 
         {/* Não logado */}
-        {!backendJwt && (
+        {!userLoggedIn && (
           <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <div className="flex items-center gap-2">
               <LucideAlertTriangle className="w-5 h-5 text-blue-600" />
@@ -341,10 +382,18 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
             <p className="text-blue-600 text-sm mt-1">
               Você precisa estar logado para autorizar o Mercado Livre.
             </p>
+            <Button
+              onClick={() => window.location.href = "/login"}
+              variant="outline"
+              size="sm"
+              className="mt-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+            >
+              Faça Login Primeiro
+            </Button>
           </div>
         )}
 
-        {authStatus === 'authorized' ? (
+        {userLoggedIn && authStatus === 'authorized' ? (
           <div className="space-y-4">
             <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg border border-green-200">
               <LucideCheck className="w-6 h-6 text-green-600" />
@@ -364,7 +413,7 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
               Revogar Autorização
             </Button>
           </div>
-        ) : (
+        ) : userLoggedIn ? (
           <div className="space-y-4">
             <div className="flex items-start gap-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
               <LucideZap className="w-6 h-6 text-yellow-600 mt-0.5" />
@@ -390,18 +439,13 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
 
             <Button
               onClick={handleAuthorize}
-              disabled={loading || backendOnline === false || !backendJwt}
+              disabled={loading || backendOnline === false}
               className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
                   <LucideLoader className="w-5 h-5 animate-spin mr-2" />
                   Gerando autorização...
-                </>
-              ) : !backendJwt ? (
-                <>
-                  <LucideKey className="w-5 h-5 mr-2" />
-                  Faça Login Primeiro
                 </>
               ) : backendOnline === false ? (
                 <>
@@ -420,12 +464,26 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
               🔒 Sua autorização é segura e pode ser revogada a qualquer momento
             </p>
           </div>
-        )}
+        ) : null}
 
         {/* Debug Info (apenas em desenvolvimento) */}
-        {process.env.NODE_ENV === 'development' && debugInfo && (
+        {process.env.NODE_ENV === 'development' && (debugInfo || localDebugInfo) && (
           <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-            <p className="text-xs text-gray-600 font-mono">{debugInfo}</p>
+            <details>
+              <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
+                Debug Info (desenvolvimento)
+              </summary>
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-gray-600 font-mono">Auth: {debugInfo}</p>
+                <p className="text-xs text-gray-600 font-mono">ML: {localDebugInfo}</p>
+                <p className="text-xs text-gray-600 font-mono">
+                  User: {userLoggedIn ? '✅ Logado' : '❌ Não logado'}
+                </p>
+                <p className="text-xs text-gray-600 font-mono">
+                  JWT: {getWorkingJwt() ? '✅ Presente' : '❌ Ausente'}
+                </p>
+              </div>
+            </details>
           </div>
         )}
       </CardContent>

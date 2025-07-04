@@ -102,13 +102,20 @@ const authOptions: NextAuthOptions = {
           }
 
           if (loginData && workingUrl) {
-            return {
+            const userData = {
               id: loginData.user?.id?.toString() || "1",
               email: credentials.email,
               name: loginData.user?.nome || credentials.email.split('@')[0],
               backendJwt: loginData.access_token,
               backendUrl: workingUrl
             };
+            
+            console.log("✅ Retornando user data:", {
+              ...userData,
+              backendJwt: userData.backendJwt ? "presente" : "ausente"
+            });
+            
+            return userData;
           } else {
             console.log("❌ Falha em todos os backends ou credenciais incorretas");
             return null;
@@ -122,6 +129,15 @@ const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async jwt({ token, account, profile, user }) {
+      console.log("🎫 JWT Callback:", {
+        hasToken: !!token,
+        hasUser: !!user,
+        hasAccount: !!account,
+        provider: account?.provider,
+        tokenKeys: token ? Object.keys(token) : [],
+        userKeys: user ? Object.keys(user) : []
+      });
+      
       // Para Google OAuth
       if (account?.provider === "google" && profile?.email) {
         console.log("🔍 Processando Google OAuth...");
@@ -177,7 +193,6 @@ const authOptions: NextAuthOptions = {
               token.backendUrl = 'mock-development';
             } else {
               console.log("❌ Google OAuth falhou em produção");
-              return token; // Falhar silenciosamente
             }
           }
         } catch (error) {
@@ -195,16 +210,25 @@ const authOptions: NextAuthOptions = {
         token.backendUrl = user.backendUrl;
       }
       
+      console.log("🎫 JWT Final:", {
+        hasBackendJwt: !!token.backendJwt,
+        backendUrl: token.backendUrl
+      });
+      
       return token;
     },
     async session({ session, token }) {
+      // CRÍTICO: Garantir que o backendJwt seja passado para a sessão
       (session as any).backendJwt = token.backendJwt;
       (session as any).backendUrl = token.backendUrl;
+      
       console.log("🎫 Sessão configurada:", {
         hasJwt: !!token.backendJwt,
         backendUrl: token.backendUrl,
-        email: session.user?.email
+        email: session.user?.email,
+        sessionKeys: Object.keys(session)
       });
+      
       return session;
     },
     async redirect({ url, baseUrl }) {
