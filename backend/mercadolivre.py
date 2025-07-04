@@ -29,20 +29,32 @@ class MLTokenManager:
             "expires_at": expires_at,
             "user_id": token_data.get("user_id"),
             "scope": token_data.get("scope"),
-            "token_type": "Bearer"
+            "token_type": "Bearer",
+            "saved_at": datetime.now().isoformat()
         }
         
         print(f"🔐 [ML 2025] Token OAuth salvo para user {user_id}, expira em {expires_at}")
         print(f"📋 [ML 2025] Escopos: {token_data.get('scope', 'N/A')}")
+        print(f"💾 [ML 2025] Token salvo às: {datetime.now().isoformat()}")
+        
+        # Verificar se realmente foi salvo
+        if user_id in ml_tokens:
+            print(f"✅ [ML 2025] Confirmação: Token para user {user_id} está no storage")
+        else:
+            print(f"❌ [ML 2025] ERRO: Token para user {user_id} NÃO foi salvo!")
     
     @staticmethod
     def get_token(user_id: int) -> Optional[str]:
         """Recupera o token válido do usuário"""
+        print(f"🔍 [ML 2025] Buscando token para user {user_id}")
+        print(f"🗂️ [ML 2025] Tokens salvos: {list(ml_tokens.keys())}")
+        
         if user_id not in ml_tokens:
             print(f"❌ [ML 2025] Token não encontrado para user {user_id}")
             return None
         
         token_info = ml_tokens[user_id]
+        print(f"🔍 [ML 2025] Token encontrado para user {user_id}, salvo às: {token_info.get('saved_at', 'N/A')}")
         
         # Verificar se o token expirou (com margem de 5 minutos)
         if datetime.now() >= (token_info["expires_at"] - timedelta(minutes=5)):

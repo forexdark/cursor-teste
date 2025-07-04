@@ -141,9 +141,27 @@ async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario 
     try:
         # Trocar código por token
         token_data = await exchange_code_for_token(auth_data.code, auth_data.state)
+        print(f"✅ [OAUTH 2025] Token obtido do ML: {list(token_data.keys())}")
         
         # Salvar token para o usuário
         MLTokenManager.save_token(current_user.id, token_data)
+        
+        # CRÍTICO: Verificar imediatamente se o token funciona
+        print(f"🧪 [OAUTH 2025] Testando token recém-salvo para user {current_user.id}")
+        import httpx
+        async with httpx.AsyncClient() as client:
+            test_response = await client.get(
+                f"{ML_API_URL}/users/me",
+                headers={"Authorization": f"Bearer {token_data['access_token']}"},
+                timeout=10.0
+            )
+            print(f"🧪 [OAUTH 2025] Teste imediato: status {test_response.status_code}")
+            if test_response.status_code != 200:
+                print(f"❌ [OAUTH 2025] Token não funcionou imediatamente: {test_response.text}")
+                raise Exception("Token obtido mas não funcional")
+            else:
+                user_data = test_response.json()
+                print(f"✅ [OAUTH 2025] Token confirmado funcionando - ML User ID: {user_data.get('id', 'N/A')}")
         
         return {
             "success": True,
@@ -151,10 +169,13 @@ async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario 
             "user_id": token_data.get("user_id"),
             "scope": token_data.get("scope"),
             "expires_in": token_data.get("expires_in"),
-            "oauth_version": "2.0_PKCE_2025"
+            "oauth_version": "2.0_PKCE_2025",
+            "token_test": "passed"
         }
     except Exception as e:
         print(f"❌ Erro no callback: {e}")
+        # Se falhou, garantir que não há token "fantasma" salvo
+        MLTokenManager.revoke_token(current_user.id)
         raise HTTPException(status_code=400, detail=f"Erro no callback OAuth: {str(e)}")
 
 @router.delete("/auth/mercadolivre/revoke")
@@ -187,14 +208,19 @@ def validate_ml_oauth_compliance(user_id: int) -> dict:
 @router.get("/auth/mercadolivre/status")
 async def mercadolivre_auth_status(current_user: Usuario = Depends(get_current_user)):
     """Verifica status da autorização OAuth 2.0 + PKCE do Mercado Livre"""
+    print(f"🔍 [ML STATUS] Verificando status para user {current_user.id}")
+    
     compliance = validate_ml_oauth_compliance(current_user.id)
+    print(f"📋 [ML STATUS] Compliance check: {compliance}")
     
     # Verificar se token ainda é válido fazendo uma chamada simples
     token_valid = False
+    ml_user_info = None
     if compliance["compliant"]:
         token = MLTokenManager.get_token(current_user.id)
         if token:
             try:
+                print(f"🧪 [ML STATUS] Testando token para user {current_user.id}")
                 # Fazer uma chamada simples para verificar se token funciona
                 import httpx
                 async with httpx.AsyncClient() as client:
@@ -205,16 +231,31 @@ async def mercadolivre_auth_status(current_user: Usuario = Depends(get_current_u
                     )
                     token_valid = test_response.status_code == 200
                     print(f"🧪 [ML 2025] Teste token para user {current_user.id}: status {test_response.status_code}")
+                    
+                    if token_valid:
+                        ml_user_info = test_response.json()
+                        print(f"✅ [ML STATUS] Token válido - ML User ID: {ml_user_info.get('id', 'N/A')}")
+                    else:
+                        print(f"❌ [ML STATUS] Token inválido - Response: {test_response.text[:200]}")
             except Exception as e:
                 print(f"🧪 [ML 2025] Erro no teste de token: {e}")
                 token_valid = False
     
+    final_authorized = compliance["compliant"] and token_valid
+    print(f"📊 [ML STATUS] Final - Autorizado: {final_authorized}")
+    
     return {
-        "authorized": compliance["compliant"] and token_valid,
+        "authorized": final_authorized,
         "oauth_version": "2.0_PKCE_2025" if compliance["compliant"] else None,
-        "message": "✅ OAuth 2.0 + PKCE ativo" if (compliance["compliant"] and token_valid) else "❌ Autorização OAuth 2.0 necessária",
+        "message": "✅ OAuth 2.0 + PKCE ativo" if final_authorized else "❌ Autorização OAuth 2.0 necessária",
         "compliance": compliance,
         "token_valid": token_valid,
+        "ml_user_id": ml_user_info.get('id') if ml_user_info else None,
+        "debug_info": {
+            "user_id": current_user.id,
+            "tokens_available": list(ml_tokens.keys()),
+            "token_found": current_user.id in ml_tokens
+        },
         "documentation": "https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao"
     }
 

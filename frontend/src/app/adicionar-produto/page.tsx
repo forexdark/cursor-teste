@@ -173,12 +173,12 @@ export default function AdicionarProduto() {
         if (process.env.NODE_ENV === 'development') {
           const responseClone = response.clone();
           const debugText = await responseClone.text();
-          console.log(`🔍 Response body preview:`, debugText.substring(0, 300));
+          console.log(`🔍 [BUSCA DEBUG] Response body preview:`, debugText.substring(0, 300));
         }
         
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Erro desconhecido');
-          console.error(`❌ Erro HTTP ${response.status}: ${errorText}`);
+          console.error(`❌ [BUSCA DEBUG] Erro HTTP ${response.status}: ${errorText}`);
           
           if (response.status === 401) {
             setError("Sessão expirada. Faça login novamente.");
@@ -199,19 +199,19 @@ export default function AdicionarProduto() {
         try {
           data = await response.json();
         } catch (parseError) {
-          console.error("❌ Erro ao fazer parse da resposta:", parseError);
+          console.error("❌ [BUSCA DEBUG] Erro ao fazer parse da resposta:", parseError);
           setError("Resposta inválida do servidor. Tente novamente.");
           setSugestoes([]);
           setShowSuggestions(true);
           return;
         }
         
-        console.log(`📋 Dados recebidos:`, data);
+        console.log(`📋 [BUSCA DEBUG] Dados recebidos:`, data);
         
         // Verificar se a busca foi bem-sucedida
         if (!data.success) {
           const errorMsg = data.error || data.message || "Erro na busca autenticada";
-          console.warn(`⚠️ [ML 2025] Busca não bem-sucedida: ${errorMsg}`);
+          console.warn(`⚠️ [BUSCA DEBUG] Busca não bem-sucedida: ${errorMsg}`);
           
           // Verificar se é erro de autorização
           if (data.action_required === 'oauth_authorization') {
@@ -241,15 +241,15 @@ export default function AdicionarProduto() {
         // Extrair produtos
         const mlResponse = data.ml_response || {};
         const produtos = mlResponse.results || [];
-        console.log(`📦 Produtos encontrados: ${produtos.length}`);
+        console.log(`📦 [BUSCA DEBUG] Produtos encontrados: ${produtos.length}`);
         
         if (process.env.NODE_ENV === 'development') {
-          console.log(`🔍 Resposta completa ML:`, mlResponse);
-          console.log(`📊 Total disponível: ${mlResponse.paging?.total || 0}`);
+          console.log(`🔍 [BUSCA DEBUG] Resposta completa ML:`, mlResponse);
+          console.log(`📊 [BUSCA DEBUG] Total disponível: ${mlResponse.paging?.total || 0}`);
           
           // Log mais detalhado para produtos
           if (produtos.length > 0) {
-            console.log(`📦 Primeiro produto:`, {
+            console.log(`📦 [BUSCA DEBUG] Primeiro produto:`, {
               id: produtos[0].id,
               title: produtos[0].title?.substring(0, 50),
               price: produtos[0].price,
@@ -277,12 +277,12 @@ export default function AdicionarProduto() {
             .slice(0, 12);
             
           setSugestoes(produtosOrdenados);
-          console.log(`✅ ${produtosOrdenados.length} produtos válidos carregados e exibidos`);
+          console.log(`✅ [BUSCA DEBUG] ${produtosOrdenados.length} produtos válidos carregados e exibidos`);
         } else {
           const noResultsMsg = data.message || "Nenhum produto encontrado para este termo.";
           setError(noResultsMsg);
           setSugestoes([]);
-          console.log(`⚠️ Nenhum produto: ${noResultsMsg}`);
+          console.log(`⚠️ [BUSCA DEBUG] Nenhum produto: ${noResultsMsg}`);
         }
         
       } catch (fetchError) {

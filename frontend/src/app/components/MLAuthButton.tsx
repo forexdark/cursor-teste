@@ -45,14 +45,24 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
     }
     
     try {
+      console.log("🔍 [ML AUTH] Verificando status de autorização...");
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/mercadolivre/status`, {
         headers: { Authorization: `Bearer ${backendJwt}` }
       });
       
       if (response.ok) {
         const data = await response.json();
+        console.log("📊 [ML AUTH] Status response:", data);
         setAuthStatus(data.authorized ? 'authorized' : 'unauthorized');
         setError(null);
+        
+        // Log detalhado para debug
+        if (data.authorized) {
+          console.log("✅ [ML AUTH] Usuário autorizado no ML");
+        } else {
+          console.log("❌ [ML AUTH] Usuário NÃO autorizado no ML");
+          console.log("🔍 [ML AUTH] Compliance:", data.compliance);
+        }
       } else {
         setAuthStatus('unauthorized');
         if (response.status === 401) {
@@ -65,6 +75,23 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
       setError("Erro de conexão com o servidor");
     }
   };
+
+  // Escutar mensagem de sucesso do callback
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'ML_AUTH_SUCCESS') {
+        console.log("🎉 [ML AUTH] Recebido sucesso do callback:", event.data);
+        // Aguardar um pouco e verificar status
+        setTimeout(() => {
+          checkAuthStatus();
+          if (onAuthSuccess) onAuthSuccess();
+        }, 1000);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [backendJwt]);
 
   // Iniciar autorização OAuth do ML
   const handleAuthorize = async () => {

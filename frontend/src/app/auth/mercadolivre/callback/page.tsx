@@ -85,15 +85,18 @@ export default function MercadoLivreCallback() {
               try {
                 window.opener.postMessage({ 
                   type: 'ML_AUTH_SUCCESS',
-                  data: data 
+                  data: data,
+                  timestamp: new Date().toISOString()
                 }, window.origin);
+                console.log("✅ Mensagem de sucesso enviada para página pai");
               } catch (e) {
                 // Se não conseguir enviar mensagem, tentar recarregar
+                console.log("⚠️ Não conseguiu enviar mensagem, recarregando página pai");
                 window.opener.location.reload();
               }
             }
             window.close();
-          }, 2000);
+          }, 3000);  // Aumentar para 3 segundos
 
         } else {
           const errorData = await response.json().catch(() => ({}));
