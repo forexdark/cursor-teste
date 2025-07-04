@@ -308,14 +308,20 @@ async def buscar_produtos_ml(query: str, user_id: int = None, limit: int = 20):
 
 async def buscar_avaliacoes_ml(ml_id: str, user_id: int = None):
     """
-    🔐 BUSCA PRODUTO ESPECÍFICO - SEMPRE AUTENTICADA
+    🔐 BUSCA AVALIAÇÕES - SEMPRE AUTENTICADA
     
     Conforme documentação oficial ML 2025:
     - OBRIGATÓRIO: token OAuth do usuário
-    - NUNCA usar busca pública (depreciada)
+    - NUNCA usar endpoints públicos (depreciados)
     """
     if not user_id:
-        print(f"❌ ERRO: user_id obrigatório para busca de produto")
+        print(f"❌ ERRO: user_id obrigatório para busca de avaliações")
+        return None
+        
+    # Obter token válido do usuário
+    token = MLTokenManager.get_token(user_id)
+    if not token:
+        print(f"❌ Token ML não encontrado para user {user_id}")
         return None
         
     url = f"{ML_API_URL}/reviews/item/{ml_id}"
@@ -324,21 +330,16 @@ async def buscar_avaliacoes_ml(ml_id: str, user_id: int = None):
         "Accept": "application/json"
     }
     
+    print(f"🔍 Buscando avaliações de {ml_id} para user {user_id}")
+    
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, headers=headers, timeout=15.0)
             
             if resp.status_code == 200:
                 data = resp.json()
-                print(f"✅ Produto autenticado encontrado: {data.get('title', 'N/A')}")
-                return {
-                    "nome": data.get("title"),
-                    "preco": data.get("price"),
-                    "estoque": data.get("available_quantity"),
-                    "url": data.get("permalink"),
-                    "thumbnail": data.get("thumbnail"),
-                    "vendedor_id": data.get("seller_id"),
-                }
+                print(f"✅ Avaliações autenticadas obtidas")
+                return data.get("reviews", [])
             elif resp.status_code == 401:
                 print(f"🔄 Token expirado, tentando renovar")
                 new_token = MLTokenManager.refresh_token(user_id)
@@ -347,16 +348,16 @@ async def buscar_avaliacoes_ml(ml_id: str, user_id: int = None):
                     resp = await client.get(url, headers=headers, timeout=15.0)
                     if resp.status_code == 200:
                         data = resp.json()
-                        print(f"✅ Produto encontrado com token renovado")
-                        return {
-                            "nome": data.get("title"),
-                            "preco": data.get("price"),
-                            "estoque": data.get("available_quantity"),
-                            "url": data.get("permalink"),
-                            "thumbnail": data.get("thumbnail"),
-                            "vendedor_id": data.get("seller_id"),
-                        }
+                        print(f"✅ Avaliações obtidas com token renovado")
+                        return data.get("reviews", [])
                 
                 print(f"❌ Token não renovável - nova autorização necessária")
                 MLTokenManager.revoke_token(user_id)
                 return None
+            else:
+                print(f"❌ Erro ao buscar avaliações: {resp.status_code}")
+                return []
+                
+    except Exception as e:
+        print(f"❌ Erro na busca de avaliações: {e}")
+        return []
