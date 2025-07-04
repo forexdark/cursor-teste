@@ -253,7 +253,7 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
               <LucideCheck className="w-6 h-6 text-green-600" />
               <div>
                 <p className="font-semibold text-green-800">✅ Mercado Livre Autorizado</p>
-                <p className="text-sm text-green-600">🔐 OAuth ativo - Todas as buscas usam dados reais e atualizados</p>
+                <p className="text-sm text-green-600">🔐 OAuth 2.0 + PKCE ativo - Conforme padrão ML 2025</p>
               </div>
             </div>
             <Button
@@ -272,17 +272,18 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
             <div className="flex items-start gap-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
               <LucideZap className="w-6 h-6 text-yellow-600 mt-0.5" />
               <div>
-                <p className="font-semibold text-yellow-800 mb-2">🔐 OAuth Obrigatório (2025)</p>
+                <p className="font-semibold text-yellow-800 mb-2">🔐 OAuth 2.0 + PKCE Obrigatório (ML 2025)</p>
                 <p className="text-sm text-yellow-700 mb-3 font-medium">
-                  <strong>Nova política ML 2025:</strong> Autorização OAuth obrigatória para todas as consultas.
+                  <strong>Documentação oficial ML 2025:</strong> OAuth 2.0 + PKCE obrigatório para todas as consultas.
                 </p>
                 <ul className="text-xs text-yellow-600 space-y-1">
                   <li>✓ Preços e estoques em tempo real</li>
                   <li>✓ Dados completos dos produtos</li>
                   <li>✓ Informações de vendedores</li>
                   <li>✓ Avaliações e comentários</li>
-                  <li>✓ Conforme novas regras ML 2025</li>
-                  <li>✓ Sem fallbacks públicos</li>
+                  <li>✓ Escopos: read + write + offline_access</li>
+                  <li>✓ PKCE (Proof Key for Code Exchange)</li>
+                  <li>✓ Refresh automático de tokens</li>
                 </ul>
               </div>
             </div>

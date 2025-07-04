@@ -215,9 +215,9 @@ export default function AdicionarProduto() {
           
           // Verificar se é erro de autorização
           if (data.action_required === 'oauth_authorization') {
-            setError("🔐 Autorização OAuth obrigatória! A partir de 2025, toda busca no ML exige autorização. Clique em 'Autorizar ML' acima.");
+            setError("🔐 OAuth 2.0 + PKCE obrigatório! Conforme documentação oficial ML 2025, toda busca exige autorização. Clique em 'Autorizar ML' acima.");
           } else if (data.action_required === 'check_authorization') {
-            setError("⚠️ Erro na sua autorização do Mercado Livre. Tente revogar e autorizar novamente.");
+            setError("⚠️ Token OAuth inválido/expirado. Tente revogar e autorizar novamente conforme padrão ML 2025.");
           } else {
             // Mostrar erro detalhado para outros casos
             let detailedError = errorMsg;
@@ -228,7 +228,7 @@ export default function AdicionarProduto() {
               detailedError += ` - ${data.message}`;
             }
             if (data.authenticated === false) {
-              detailedError = "🔐 Busca não autenticada. Token OAuth necessário para acessar dados do ML.";
+              detailedError = "🔐 Busca não autenticada. Token OAuth 2.0 + PKCE obrigatório conforme ML 2025.";
             }
             
             setError(detailedError);

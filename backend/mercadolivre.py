@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 ML_API_URL = "https://api.mercadolibre.com"
 ML_CLIENT_ID = os.getenv("ML_CLIENT_ID")
 ML_CLIENT_SECRET = os.getenv("ML_CLIENT_SECRET")
-ML_REDIRECT_URI = os.getenv("ML_REDIRECT_URI", "https://vigia-meli.vercel.app/auth/mercadolivre/callback")
+ML_REDIRECT_URI = os.getenv("ML_REDIRECT_URI", "https://vigia-meli.vercel.app/api/auth/callback/mercadolivre")
 
 # Armazenamento simples do token (em produção, usar Redis ou banco)
 ml_tokens = {}
@@ -103,22 +103,26 @@ class MLTokenManager:
 
 async def buscar_produto_ml(ml_id: str, user_id: int):
     """
-    🔐 BUSCA PRODUTO ESPECÍFICO - SEMPRE AUTENTICADA
+    🔐 BUSCA PRODUTO ESPECÍFICO - OAuth 2.0 + PKCE obrigatório
     
     Conforme documentação oficial ML 2025:
+    https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao
+    
     - OBRIGATÓRIO: token OAuth do usuário
-    - NUNCA usar endpoints públicos (todos bloqueados)
+    - NUNCA usar endpoints públicos (todos depreciados)
+    - Escopos: read write offline_access
+    - PKCE implementado
     """
     if not user_id:
-        print(f"❌ ERRO: user_id obrigatório para busca de produto")
+        print(f"❌ [OAUTH 2025] ERRO: user_id obrigatório para busca autenticada")
         return None
         
-    print(f"🔐 BUSCA AUTENTICADA PRODUTO: id={ml_id}, user_id={user_id}")
+    print(f"🔐 [OAUTH 2025] BUSCA AUTENTICADA PRODUTO: id={ml_id}, user_id={user_id}")
     
     # Obter token válido do usuário
     token = MLTokenManager.get_token(user_id)
     if not token:
-        print(f"❌ Token ML ausente/expirado para user {user_id}")
+        print(f"❌ [OAUTH 2025] Token OAuth ausente/expirado para user {user_id}")
         return None
     
     url = f"{ML_API_URL}/items/{ml_id}"
@@ -202,16 +206,19 @@ def get_ml_auth_url(state: str = None) -> str:
         "response_type": "code",
         "client_id": ML_CLIENT_ID,
         "redirect_uri": ML_REDIRECT_URI,
-        "scope": "read write offline_access",
+        "scope": "read write offline_access",  # Escopos conforme documentação oficial 2025
         "code_challenge": code_challenge,
-        "code_challenge_method": "S256"
+        "code_challenge_method": "S256",
+        "access_type": "offline"  # Para receber refresh_token
     }
     
     if state:
         params["state"] = state
     
     auth_url = f"https://auth.mercadolivre.com.br/authorization?{urlencode(params)}"
-    print(f"🔗 URL OAuth gerada: {auth_url[:100]}...")
+    print(f"🔗 [OAUTH 2025] URL autorização gerada: {auth_url[:100]}...")
+    print(f"🔑 [OAUTH 2025] Escopos solicitados: read write offline_access")
+    print(f"📍 [OAUTH 2025] Redirect URI: {ML_REDIRECT_URI}")
     return auth_url
 
 async def exchange_code_for_token(code: str, state: str = None) -> dict:

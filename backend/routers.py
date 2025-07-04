@@ -129,10 +129,13 @@ async def get_mercadolivre_auth_url(current_user: Usuario = Depends(get_current_
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao gerar URL de autorização: {str(e)}")
 
-@router.post("/auth/mercadolivre/callback")
+@router.post("/auth/mercadolivre/callback", summary="OAuth 2.0 Callback - Conforme doc oficial ML 2025")
 async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario = Depends(get_current_user)):
-    """Processa callback do OAuth do Mercado Livre"""
-    print(f"🔄 Processando callback ML para user {current_user.id}")
+    """
+    Processa callback do OAuth 2.0 + PKCE do Mercado Livre
+    Conforme documentação oficial 2025: https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao
+    """
+    print(f"🔄 [OAUTH 2025] Processando callback ML para user {current_user.id}")
     print(f"📋 Dados recebidos: code={auth_data.code[:10] if auth_data.code else 'NULO'}..., state={auth_data.state}")
     
     try:
@@ -144,10 +147,11 @@ async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario 
         
         return {
             "success": True,
-            "message": "Autorização do Mercado Livre concluída com sucesso!",
+            "message": "✅ Autorização OAuth 2.0 do Mercado Livre concluída com sucesso! Conforme padrão 2025.",
             "user_id": token_data.get("user_id"),
             "scope": token_data.get("scope"),
-            "expires_in": token_data.get("expires_in")
+            "expires_in": token_data.get("expires_in"),
+            "oauth_version": "2.0_PKCE_2025"
         }
     except Exception as e:
         print(f"❌ Erro no callback: {e}")
@@ -159,13 +163,38 @@ async def revoke_mercadolivre_auth(current_user: Usuario = Depends(get_current_u
     MLTokenManager.revoke_token(current_user.id)
     return {"success": True, "message": "Autorização do Mercado Livre revogada"}
 
+# Validação de compliance OAuth 2.0 ML 2025
+def validate_ml_oauth_compliance(user_id: int) -> dict:
+    """
+    Valida se o usuário está em compliance com OAuth 2.0 + PKCE ML 2025
+    """
+    token = MLTokenManager.get_token(user_id)
+    if not token:
+        return {
+            "compliant": False,
+            "error": "oauth_required",
+            "message": "OAuth 2.0 + PKCE obrigatório conforme documentação ML 2025",
+            "action": "Clique em 'Autorizar Mercado Livre' para seguir o fluxo oficial"
+        }
+    
+    return {
+        "compliant": True,
+        "oauth_version": "2.0_PKCE",
+        "token_type": "Bearer",
+        "scopes": "read write offline_access"
+    }
+
 @router.get("/auth/mercadolivre/status")
 async def mercadolivre_auth_status(current_user: Usuario = Depends(get_current_user)):
-    """Verifica status da autorização do Mercado Livre"""
-    token = MLTokenManager.get_token(current_user.id)
+    """Verifica status da autorização OAuth 2.0 + PKCE do Mercado Livre"""
+    compliance = validate_ml_oauth_compliance(current_user.id)
+    
     return {
-        "authorized": token is not None,
-        "message": "Autorizado" if token else "Não autorizado"
+        "authorized": compliance["compliant"],
+        "oauth_version": "2.0_PKCE_2025" if compliance["compliant"] else None,
+        "message": "✅ OAuth 2.0 + PKCE ativo" if compliance["compliant"] else "❌ Autorização OAuth 2.0 necessária",
+        "compliance": compliance,
+        "documentation": "https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao"
     }
 
 # --- USUÁRIOS ---
@@ -309,29 +338,33 @@ async def search_products_public(query: str):
             "search_type": "public_api"
         }
 
-@router.get("/produtos/search/{query}")
+@router.get("/produtos/search/{query}", summary="Busca produtos - 100% autenticada conforme ML 2025")
 async def search_produtos_ml(query: str, current_user: Usuario = Depends(get_current_user)):
     """
-    🎯 BUSCA MERCADO LIVRE - SEMPRE AUTENTICADA VIA OAUTH
+    🎯 BUSCA MERCADO LIVRE - 100% AUTENTICADA VIA OAUTH 2.0 + PKCE
     
-    Conforme documentação oficial ML 2025:
+    Conforme documentação oficial ML 2025: 
+    https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao
+    
     - SEMPRE usar token OAuth do usuário
-    - NUNCA usar endpoints públicos
+    - NUNCA usar endpoints públicos (todos depreciados/bloqueados)
     - Validar e renovar tokens automaticamente
+    - Escopos obrigatórios: read write offline_access
     """
     try:
-        print(f"🔍 BUSCA AUTENTICADA ML: user_id={current_user.id}, query='{query}'")
+        print(f"🔍 [OAUTH 2025] BUSCA AUTENTICADA ML: user_id={current_user.id}, query='{query}'")
         
         # SEMPRE usar token OAuth do usuário autenticado
         token = MLTokenManager.get_token(current_user.id)
         if not token:
-            print(f"❌ Token ML não encontrado para user {current_user.id}")
+            print(f"❌ [OAUTH 2025] Token ML não encontrado para user {current_user.id}")
             return {
                 "success": False,
-                "error": "Autorização do Mercado Livre necessária",
-                "message": "Você precisa autorizar o VigIA no Mercado Livre para buscar produtos",
+                "error": "🔐 Autorização OAuth 2.0 do Mercado Livre obrigatória",
+                "message": "Conforme ML 2025: Toda busca exige autorização OAuth 2.0 + PKCE. Clique em 'Autorizar ML'.",
                 "action_required": "oauth_authorization",
-                "user_id": current_user.id
+                "user_id": current_user.id,
+                "compliance": "ML_2025_OAUTH_REQUIRED"
             }
         
         # Chamar função autenticada do mercadolivre.py

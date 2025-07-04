@@ -140,7 +140,7 @@ export default function MercadoLivreCallback() {
 
           <div className="flex items-center justify-center gap-2 mb-4">
             <FaShoppingCart className="w-6 h-6 text-orange-500" />
-            <h1 className="text-xl font-bold text-gray-800">Mercado Livre</h1>
+            <h1 className="text-xl font-bold text-gray-800">OAuth 2.0 + PKCE</h1>
           </div>
 
           <p className={`text-sm ${
@@ -171,7 +171,7 @@ export default function MercadoLivreCallback() {
               {process.env.NODE_ENV === 'development' && debugInfo.length > 0 && (
                 <details className="mb-4 text-left">
                   <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-                    Debug Info (desenvolvimento)
+                    OAuth 2.0 Debug Info (desenvolvimento)
                   </summary>
                   <div className="mt-2 p-2 bg-gray-100 rounded text-xs font-mono max-h-32 overflow-y-auto">
                     {debugInfo.map((info, index) => (

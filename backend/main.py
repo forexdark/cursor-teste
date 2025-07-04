@@ -189,17 +189,23 @@ async def health():
         )
 
 # Endpoint de diagnóstico
-@app.get("/debug/info")
+@app.get("/debug/info", summary="Informações de debug e compliance ML 2025")
 def debug_info():
-    """Informações de debug (apenas para desenvolvimento)"""
+    """
+    Informações de debug e compliance OAuth 2.0 ML 2025
+    (apenas para desenvolvimento)
+    """
     return {
         "python_version": sys.version,
         "working_directory": os.getcwd(),
+        "ml_oauth_compliance": "2025_OAUTH_2.0_PKCE_REQUIRED",
+        "documentation": "https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao",
         "environment_vars": {
             "DATABASE_URL": "✅ Set" if os.getenv('DATABASE_URL') else "❌ Not Set",
             "ML_CLIENT_ID": "✅ Set" if os.getenv('ML_CLIENT_ID') else "❌ Not Set",
             "FRONTEND_URL": os.getenv('FRONTEND_URL', 'Not Set'),
-            "PORT": os.getenv('PORT', 'Not Set')
+            "PORT": os.getenv('PORT', 'Not Set'),
+            "ML_OAUTH_REDIRECT": os.getenv('ML_REDIRECT_URI', 'Default: /api/auth/callback/mercadolivre')
         }
     }
 
