@@ -124,10 +124,11 @@ async def buscar_produto_ml(ml_id: str, user_id: int = None):
                 "vendedor_id": data.get("seller_id"),
             }
         else:
-            print(f"❌ Busca pública falhou: {resp.status_code}")
+            print(f"❌ Erro ao buscar produto: {resp.status_code}")
             return None
+            
     except Exception as e:
-        print(f"❌ Erro na busca pública: {e}")
+        print(f"❌ Erro na busca de produto: {e}")
         return None
 
 def generate_pkce_pair():
@@ -226,100 +227,136 @@ async def exchange_code_for_token(code: str, state: str = None) -> dict:
 
 async def buscar_produtos_ml(query: str, user_id: int = None, limit: int = 20):
     """
-    🚨 BUSCA MERCADO LIVRE - API PÚBLICA SEM HEADERS
+    🔐 BUSCA MERCADO LIVRE - SEMPRE AUTENTICADA VIA OAUTH
     
-    API pública do ML rejeita qualquer header extra.
-    Usar apenas requests.get(url) puro para busca pública.
+    Conforme documentação oficial ML 2025:
+    - OBRIGATÓRIO: token OAuth do usuário
+    - NUNCA usar endpoints públicos (todos depreciados/bloqueados)
+    - Validar e renovar tokens automaticamente
     """
-    print(f"🔍 ML SEARCH: query='{query}', user_id={user_id}")
+    if not user_id:
+        print(f"❌ ERRO: user_id obrigatório para busca autenticada")
+        return None
+        
+    print(f"🔐 ML AUTHENTICATED SEARCH: query='{query}', user_id={user_id}")
     
-    # URL para busca pública (sem autenticação)
+    # Obter token válido do usuário
+    token = MLTokenManager.get_token(user_id)
+    if not token:
+        print(f"❌ Token ML não encontrado ou expirado para user {user_id}")
+        return None
+    
+    # URL da API autenticada
     search_url = f"{ML_API_URL}/sites/MLB/search"
     params = {
         "q": query,
-        "limit": limit,
-        "site_id": "MLB"
+        "limit": limit
     }
     
+    # Headers obrigatórios com token OAuth
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json"
+    }
+    
+    environment = 'Railway' if 'RAILWAY_STATIC_URL' in os.environ else 'Local'
+    print(f"🌐 [AUTH DEBUG] Ambiente: {environment}")
+    print(f"🔑 [AUTH DEBUG] Token: {token[:20]}..." if token else "❌ Token ausente")
+    print(f"📡 [AUTH DEBUG] URL: {search_url}")
+    print(f"📋 [AUTH DEBUG] Params: {params}")
+    
     try:
-        # Tentar busca autenticada primeiro (se tiver token válido)
-        if user_id:
-            token = MLTokenManager.get_token(user_id)
-            if token:
-                print(f"🔐 Busca autenticada para user {user_id}")
-                async with httpx.AsyncClient() as client:
-                    headers = {"Authorization": f"Bearer {token}"}
-                    resp = await client.get(search_url, headers=headers, params=params, timeout=10.0)
+        # SEMPRE usar busca autenticada
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(search_url, headers=headers, params=params, timeout=15.0)
+            
+            print(f"🟧 [AUTH DEBUG] Status: {resp.status_code}")
+            print(f"🟥 [AUTH DEBUG] Response: {resp.text[:300]}...")
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                print(f"✅ Busca autenticada bem-sucedida: {len(data.get('results', []))} produtos")
+                return data
+            elif resp.status_code == 401:
+                print(f"🔄 Token expirado, tentando renovar para user {user_id}")
+                # Tentar renovar token automaticamente
+                new_token = MLTokenManager.refresh_token(user_id)
+                if new_token:
+                    headers["Authorization"] = f"Bearer {new_token}"
+                    resp = await client.get(search_url, headers=headers, params=params, timeout=15.0)
                     if resp.status_code == 200:
-                        print(f"✅ Busca autenticada bem-sucedida")
+                        print(f"✅ Busca com token renovado bem-sucedida")
                         return resp.json()
-                    print(f"⚠️ Busca autenticada falhou ({resp.status_code}), tentando busca pública")
-        
-        # Busca pública - SEM HEADERS, SEM PARÂMETROS EXTRAS
-        print(f"🌐 Busca pública - requests puro sem headers")
-        import requests
-        
-        # Construir URL completa (a API pública prefere URL completa vs params)
-        public_url = f"{ML_API_URL}/sites/MLB/search?q={query}&limit={limit}"
-        print(f"📡 URL: {public_url}")
-        
-        # 🚨 CRÍTICO: ZERO headers, ZERO configurações extras
-        resp = requests.get(public_url)
-        
-        print(f"📊 Status público: {resp.status_code}")
-        
-        if resp.status_code == 200:
-            print(f"✅ Busca pública bem-sucedida")
-            return resp.json()
+                
+                print(f"❌ Token não pôde ser renovado - nova autorização necessária")
+                # Remover token inválido
+                MLTokenManager.revoke_token(user_id)
+                return None
+            elif resp.status_code == 403:
+                print(f"❌ Acesso negado - escopo insuficiente ou app não aprovado")
+                return None
         else:
-            print(f"❌ Busca pública falhou: {resp.status_code} - {resp.text[:200]}")
+            print(f"❌ Erro HTTP {resp.status_code}: {resp.text[:200]}")
             return None
             
+    except httpx.TimeoutException:
+        print(f"⏰ Timeout na busca autenticada ML")
+        return None
     except Exception as e:
-        print(f"❌ Erro geral na busca ML: {str(e)}")
+        print(f"❌ Erro na busca autenticada ML: {str(e)}")
         return None
 
 async def buscar_avaliacoes_ml(ml_id: str, user_id: int = None):
     """
-    Busca avaliações do produto conforme documentação oficial ML
-    Endpoint de reviews é público mas pode usar autenticação para mais dados
+    🔐 BUSCA PRODUTO ESPECÍFICO - SEMPRE AUTENTICADA
+    
+    Conforme documentação oficial ML 2025:
+    - OBRIGATÓRIO: token OAuth do usuário
+    - NUNCA usar busca pública (depreciada)
     """
+    if not user_id:
+        print(f"❌ ERRO: user_id obrigatório para busca de produto")
+        return None
+        
     url = f"{ML_API_URL}/reviews/item/{ml_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/json"
+    }
     
-    print(f"🔍 Buscando avaliações de {ml_id}")
-    
-    if user_id:
-        # Tentar busca autenticada para mais detalhes
-        token = MLTokenManager.get_token(user_id)
-        if token:
-            try:
-                print(f"🔐 Tentando busca autenticada de avaliações")
-                async with httpx.AsyncClient() as client:
-                    headers = {"Authorization": f"Bearer {token}"}
-                    resp = await client.get(url, headers=headers, timeout=10.0)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=headers, timeout=15.0)
+            
+            if resp.status_code == 200:
+                data = resp.json()
+                print(f"✅ Produto autenticado encontrado: {data.get('title', 'N/A')}")
+                return {
+                    "nome": data.get("title"),
+                    "preco": data.get("price"),
+                    "estoque": data.get("available_quantity"),
+                    "url": data.get("permalink"),
+                    "thumbnail": data.get("thumbnail"),
+                    "vendedor_id": data.get("seller_id"),
+                }
+            elif resp.status_code == 401:
+                print(f"🔄 Token expirado, tentando renovar")
+                new_token = MLTokenManager.refresh_token(user_id)
+                if new_token:
+                    headers["Authorization"] = f"Bearer {new_token}"
+                    resp = await client.get(url, headers=headers, timeout=15.0)
                     if resp.status_code == 200:
                         data = resp.json()
-                        print(f"✅ Avaliações autenticadas obtidas")
-                        return data.get("reviews", [])
-                    print(f"⚠️ Busca autenticada de avaliações falhou: {resp.status_code}")
-            except Exception as e:
-                print(f"⚠️ Erro na busca autenticada de avaliações: {e}")
-    
-    # Busca pública de avaliações
-    print(f"🌐 Fazendo busca pública de avaliações")
-    try:
-        import requests
-        # Endpoint de reviews pode ser público
-        resp = requests.get(url)
-        print(f"📊 Status avaliações públicas: {resp.status_code}")
-        
-        if resp.status_code == 200:
-            data = resp.json()
-            print(f"✅ Avaliações públicas obtidas")
-            return data.get("reviews", [])
-        else:
-            print(f"❌ Busca pública de avaliações falhou: {resp.status_code}")
-            return []
-    except Exception as e:
-        print(f"❌ Erro na busca pública de avaliações: {e}")
-        return []
+                        print(f"✅ Produto encontrado com token renovado")
+                        return {
+                            "nome": data.get("title"),
+                            "preco": data.get("price"),
+                            "estoque": data.get("available_quantity"),
+                            "url": data.get("permalink"),
+                            "thumbnail": data.get("thumbnail"),
+                            "vendedor_id": data.get("seller_id"),
+                        }
+                
+                print(f"❌ Token não renovável - nova autorização necessária")
+                MLTokenManager.revoke_token(user_id)
+                return None

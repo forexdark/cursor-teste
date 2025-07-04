@@ -21,6 +21,7 @@ from openai_utils import gerar_resumo_avaliacoes
 import httpx
 from pydantic import BaseModel
 import traceback
+import os
 
 router = APIRouter()
 
@@ -285,66 +286,61 @@ async def search_products_public(query: str):
         }
 
 @router.get("/produtos/search/{query}")
-async def search_produtos_ml(query: str):
+async def search_produtos_ml(query: str, current_user: Usuario = Depends(get_current_user)):
     """
-    🎯 BUSCA MERCADO LIVRE - DEBUG COMPLETO
+    🎯 BUSCA MERCADO LIVRE - SEMPRE AUTENTICADA VIA OAUTH
     
-    Implementação exata conforme solicitado:
-    - requests.get(url) puro sem headers
-    - Logs detalhados antes e depois
-    - Formato de retorno padronizado
+    Conforme documentação oficial ML 2025:
+    - SEMPRE usar token OAuth do usuário
+    - NUNCA usar endpoints públicos
+    - Validar e renovar tokens automaticamente
     """
-    import requests
-    import os
-    
     try:
-        # URL da API pública do Mercado Livre
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}"
+        print(f"🔍 BUSCA AUTENTICADA ML: user_id={current_user.id}, query='{query}'")
         
-        # LOGS ANTES DA CHAMADA
-        print(f"\n\n🌐 [DEBUG] ML URL: {url}")
-        environment = 'Railway' if 'RAILWAY_STATIC_URL' in os.environ else 'Local'
-        print(f"🟩 [DEBUG] Ambiente: {environment}")
+        # SEMPRE usar token OAuth do usuário autenticado
+        token = MLTokenManager.get_token(current_user.id)
+        if not token:
+            print(f"❌ Token ML não encontrado para user {current_user.id}")
+            return {
+                "success": False,
+                "error": "Autorização do Mercado Livre necessária",
+                "message": "Você precisa autorizar o VigIA no Mercado Livre para buscar produtos",
+                "action_required": "oauth_authorization",
+                "user_id": current_user.id
+            }
         
-        # CHAMADA PURA - SEM HEADERS
-        resp = requests.get(url)
+        # Chamar função autenticada do mercadolivre.py
+        result = await buscar_produtos_ml(query, current_user.id, limit=15)
         
-        # LOGS APÓS A CHAMADA
-        print(f"🟦 [DEBUG] Headers enviados: {dict(resp.request.headers)}")
-        print(f"🟧 [DEBUG] Status code: {resp.status_code}")
-        print(f"🟥 [DEBUG] Response text: {resp.text[:500]}")
-        print(f"🟨 [DEBUG] Response headers: {dict(resp.headers)}")
-        
-        # VERIFICAR SUCESSO
-        if resp.status_code == 200:
-            data = resp.json()
-            print(f"✅ [DEBUG] JSON parseado com sucesso - {len(data.get('results', []))} produtos")
-            
+        if result:
+            print(f"✅ Busca ML bem-sucedida: {len(result.get('results', []))} produtos")
             return {
                 "success": True,
                 "query": query,
-                "ml_response": data
+                "user_id": current_user.id,
+                "ml_response": result,
+                "authenticated": True
             }
         else:
-            print(f"❌ [DEBUG] Erro HTTP {resp.status_code}")
+            print(f"❌ Busca ML falhou para user {current_user.id}")
             return {
                 "success": False,
-                "error": f"Erro {resp.status_code} ao chamar API ML",
-                "status_code": resp.status_code,
-                "ml_response": resp.text,
-                "headers": dict(resp.headers),
-                "request_headers": dict(resp.request.headers),
-                "env": environment
+                "error": "Erro na busca do Mercado Livre",
+                "message": "Não foi possível buscar produtos. Verifique sua autorização.",
+                "action_required": "check_authorization",
+                "user_id": current_user.id
             }
-        
+            
     except Exception as e:
-        import traceback
-        print(f"❌ [DEBUG] Exception: {str(e)}")
-        print(f"❌ [DEBUG] Traceback: {traceback.format_exc()}")
+        print(f"❌ ERRO na busca ML: {str(e)}")
+        print(f"❌ Traceback: {traceback.format_exc()}")
         return {
             "success": False,
             "error": str(e),
-            "trace": traceback.format_exc()
+            "message": "Erro interno na busca",
+            "user_id": current_user.id,
+            "trace": traceback.format_exc() if os.environ.get('DEBUG') else None
         }
 
 # --- HISTÓRICO DE PREÇOS ---
