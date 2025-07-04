@@ -14,7 +14,7 @@ from passlib.context import CryptContext
 from datetime import datetime
 from mercadolivre import (
     buscar_produto_ml, buscar_avaliacoes_ml, buscar_produtos_ml, MLTokenManager,
-    get_ml_auth_url, exchange_code_for_token, MLTokenManager
+    get_ml_auth_url, exchange_code_for_token, MLTokenManager, ML_API_URL
 )
 import asyncio
 from openai_utils import gerar_resumo_avaliacoes
