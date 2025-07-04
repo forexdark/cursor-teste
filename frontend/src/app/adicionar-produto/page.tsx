@@ -119,16 +119,21 @@ export default function AdicionarProduto() {
     try {
       console.log(`🔍 Iniciando busca: "${q}"`);
       
-      // URL com encoding correto
-      const searchUrl = `${process.env.NEXT_PUBLIC_API_URL}/produtos/search/${encodeURIComponent(q.trim())}`;
+      // Tentar busca detalhada primeiro, depois simples
+      const searchUrls = [
+        `${process.env.NEXT_PUBLIC_API_URL}/produtos/search-enhanced/${encodeURIComponent(q.trim())}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/produtos/search/${encodeURIComponent(q.trim())}`
+      ];
+      
+      let searchUrl = searchUrls[0]; // Começar com busca detalhada
       console.log(`📡 URL de busca: ${searchUrl}`);
       
       // Controller para timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos
+      let controller = new AbortController();
+      let timeoutId = setTimeout(() => controller.abort(), 20000); // 20 segundos para busca detalhada
       
       try {
-        const response = await fetch(searchUrl, {
+        let response = await fetch(searchUrl, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${backendJwt}`,
@@ -140,7 +145,36 @@ export default function AdicionarProduto() {
         
         clearTimeout(timeoutId);
         
+        // Se busca detalhada falhou, tentar busca simples
+        if (!response.ok && searchUrl === searchUrls[0]) {
+          console.log("⚠️ Busca detalhada falhou, tentando busca simples...");
+          
+          controller = new AbortController();
+          timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos para busca simples
+          
+          searchUrl = searchUrls[1];
+          
+          response = await fetch(searchUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${backendJwt}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+        }
+        
         console.log(`📊 Status da resposta: ${response.status}`);
+        
+        // Log adicional para debug
+        if (process.env.NODE_ENV === 'development') {
+          const responseClone = response.clone();
+          const debugText = await responseClone.text();
+          console.log(`🔍 Response body preview:`, debugText.substring(0, 300));
+        }
         
         if (!response.ok) {
           const errorText = await response.text().catch(() => 'Erro desconhecido');
@@ -191,6 +225,16 @@ export default function AdicionarProduto() {
         if (process.env.NODE_ENV === 'development') {
           console.log(`🔍 Tipo de busca: ${data.search_type || 'unknown'}`);
           console.log(`📊 Total disponível: ${data.total || 0}`);
+          
+          // Log mais detalhado para produtos
+          if (produtos.length > 0) {
+            console.log(`📦 Primeiro produto:`, {
+              id: produtos[0].id,
+              title: produtos[0].title?.substring(0, 50),
+              price: produtos[0].price,
+              hasDetails: !!(produtos[0].seller?.nickname)
+            });
+          }
         }
         
         if (produtos.length > 0) {
@@ -212,10 +256,12 @@ export default function AdicionarProduto() {
             .slice(0, 12);
             
           setSugestoes(produtosOrdenados);
-          console.log(`✅ ${produtosOrdenados.length} produtos válidos carregados`);
+          console.log(`✅ ${produtosOrdenados.length} produtos válidos carregados e exibidos`);
         } else {
-          setError("Nenhum produto encontrado para este termo.");
+          const noResultsMsg = data.message || "Nenhum produto encontrado para este termo.";
+          setError(noResultsMsg);
           setSugestoes([]);
+          console.log(`⚠️ Nenhum produto: ${noResultsMsg}`);
         }
         
       } catch (fetchError) {

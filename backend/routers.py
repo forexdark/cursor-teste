@@ -272,28 +272,218 @@ async def search_products_public(query: str):
             "search_type": "public"
         }
 
-@router.get("/produtos/search/{query}")
-async def buscar_produtos(query: str, current_user: Usuario = Depends(get_current_user)):
-    """Busca produtos no Mercado Livre usando token do usuário quando disponível"""
+@router.get("/produtos/search-enhanced/{query}")
+async def buscar_produtos_detalhados(query: str, current_user: Usuario = Depends(get_current_user)):
+    """Busca produtos com máximo de detalhes da API do Mercado Livre"""
     try:
-        resultados = await buscar_produtos_ml(query, current_user.id)
+        print(f"🔍 Busca detalhada iniciada: '{query}' para user {current_user.id}")
         
-        if not resultados:
+        # 1. Busca inicial na API do ML
+        async with httpx.AsyncClient() as client:
+            search_url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=10"
+            print(f"📡 URL de busca: {search_url}")
+            
+            search_response = await client.get(search_url, timeout=15.0)
+            
+            if search_response.status_code != 200:
+                print(f"❌ Erro na busca inicial: {search_response.status_code}")
+                return {
+                    "success": False,
+                    "query": query,
+                    "error": f"ML API returned {search_response.status_code}",
+                    "results": []
+                }
+            
+            search_data = search_response.json()
+            produtos_base = search_data.get("results", [])
+            
+            if not produtos_base:
+                print("⚠️ Nenhum produto encontrado na busca inicial")
+                return {
+                    "success": False,
+                    "query": query,
+                    "message": "Nenhum produto encontrado no Mercado Livre",
+                    "results": []
+                }
+            
+            print(f"📦 {len(produtos_base)} produtos encontrados na busca inicial")
+            
+            # 2. Enriquecer dados dos primeiros 5 produtos
+            produtos_detalhados = []
+            
+            for i, produto in enumerate(produtos_base[:5]):  # Limitar a 5 para performance
+                try:
+                    produto_id = produto["id"]
+                    print(f"🔍 Detalhando produto {i+1}/5: {produto_id}")
+                    
+                    # Buscar detalhes do produto
+                    produto_detail_response = await client.get(
+                        f"https://api.mercadolibre.com/items/{produto_id}", 
+                        timeout=5.0
+                    )
+                    
+                    produto_detail = produto_detail_response.json() if produto_detail_response.status_code == 200 else {}
+                    
+                    # Buscar dados do vendedor
+                    vendedor_data = {}
+                    if produto.get("seller", {}).get("id"):
+                        vendedor_response = await client.get(
+                            f"https://api.mercadolibre.com/users/{produto['seller']['id']}", 
+                            timeout=3.0
+                        )
+                        vendedor_data = vendedor_response.json() if vendedor_response.status_code == 200 else {}
+                    
+                    # Buscar avaliações (pode falhar, é opcional)
+                    reviews_data = None
+                    try:
+                        reviews_response = await client.get(
+                            f"https://api.mercadolibre.com/reviews/item/{produto_id}",
+                            timeout=3.0
+                        )
+                        if reviews_response.status_code == 200:
+                            reviews_json = reviews_response.json()
+                            reviews_data = {
+                                "rating_average": reviews_json.get("rating_average"),
+                                "total": reviews_json.get("total"),
+                                "reviews": reviews_json.get("reviews", [])[:3]  # Primeiras 3 reviews
+                            }
+                    except:
+                        pass  # Reviews são opcionais
+                    
+                    # Montar produto detalhado
+                    produto_completo = {
+                        "id": produto_id,
+                        "title": produto.get("title", ""),
+                        "price": produto.get("price", 0),
+                        "original_price": produto.get("original_price"),
+                        "currency_id": produto.get("currency_id", "BRL"),
+                        "available_quantity": produto.get("available_quantity", 0),
+                        "sold_quantity": produto.get("sold_quantity", 0),
+                        "condition": produto.get("condition", "unknown"),
+                        "permalink": produto.get("permalink", ""),
+                        "thumbnail": produto.get("thumbnail", ""),
+                        "pictures": produto_detail.get("pictures", [])[:3],  # Primeiras 3 imagens
+                        "attributes": produto.get("attributes", [])[:5],  # Primeiros 5 atributos
+                        "shipping": {
+                            "free_shipping": produto.get("shipping", {}).get("free_shipping", False),
+                            "mode": produto.get("shipping", {}).get("mode"),
+                            "logistic_type": produto.get("shipping", {}).get("logistic_type")
+                        },
+                        "installments": produto.get("installments"),
+                        "seller": {
+                            "id": produto.get("seller", {}).get("id"),
+                            "nickname": vendedor_data.get("nickname"),
+                            "registration_date": vendedor_data.get("registration_date"),
+                            "country_id": vendedor_data.get("country_id"),
+                            "seller_reputation": vendedor_data.get("seller_reputation", {}),
+                            "transactions": vendedor_data.get("seller_reputation", {}).get("transactions", {}),
+                            "metrics": vendedor_data.get("seller_reputation", {}).get("metrics", {})
+                        },
+                        "location": produto.get("location"),
+                        "reviews": reviews_data,
+                        "category_id": produto.get("category_id"),
+                        "listing_type_id": produto.get("listing_type_id"),
+                        "warranty": produto_detail.get("warranty"),
+                        "tags": produto.get("tags", [])
+                    }
+                    
+                    produtos_detalhados.append(produto_completo)
+                    print(f"✅ Produto {produto_id} detalhado com sucesso")
+                    
+                except Exception as e:
+                    print(f"⚠️ Erro ao detalhar produto {produto.get('id', 'unknown')}: {e}")
+                    # Adicionar produto básico mesmo se falhar o detalhamento
+                    produtos_detalhados.append({
+                        "id": produto.get("id"),
+                        "title": produto.get("title", ""),
+                        "price": produto.get("price", 0),
+                        "available_quantity": produto.get("available_quantity", 0),
+                        "permalink": produto.get("permalink", ""),
+                        "thumbnail": produto.get("thumbnail", ""),
+                        "condition": produto.get("condition", "unknown"),
+                        "seller": produto.get("seller", {}),
+                        "shipping": produto.get("shipping", {}),
+                        "error": "Detalhamento parcial"
+                    })
+            
+            print(f"✅ Busca detalhada concluída: {len(produtos_detalhados)} produtos processados")
+            
             return {
-                "success": False,
+                "success": True,
                 "query": query,
-                "total": 0,
-                "results": [],
-                "message": "Nenhum produto encontrado"
+                "total": search_data.get("paging", {}).get("total", len(produtos_detalhados)),
+                "available_filters": search_data.get("available_filters", []),
+                "results": produtos_detalhados,
+                "search_type": "enhanced",
+                "ml_api_version": "2025"
             }
-        
+            
+    except httpx.TimeoutException:
+        print("❌ Timeout na busca do Mercado Livre")
         return {
-            "success": True,
+            "success": False,
             "query": query,
-            "total": resultados.get("paging", {}).get("total", 0),
-            "results": resultados.get("results", [])
+            "error": "Timeout na busca - tente um termo mais específico",
+            "results": []
         }
     except Exception as e:
+        print(f"❌ Erro na busca detalhada: {e}")
+        return {
+            "success": False,
+            "query": query,
+            "error": str(e),
+            "results": []
+        }
+
+@router.get("/produtos/search/{query}")
+async def buscar_produtos(query: str, current_user: Usuario = Depends(get_current_user)):
+    """Busca produtos no Mercado Livre - versão simplificada e robusta"""
+    try:
+        print(f"🔍 Busca simples iniciada: '{query}' para user {current_user.id}")
+        
+        # Busca direta na API do Mercado Livre
+        async with httpx.AsyncClient() as client:
+            url = f"https://api.mercadolibre.com/sites/MLB/search?q={query.strip()}&limit=15"
+            print(f"📡 Fazendo requisição para: {url}")
+            
+            response = await client.get(url, timeout=10.0)
+            print(f"📊 Status da resposta: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                total_found = data.get("paging", {}).get("total", 0)
+                results = data.get("results", [])
+                
+                print(f"📦 ML retornou {len(results)} produtos (total disponível: {total_found})")
+                
+                if not results:
+                    return {
+                        "success": False,
+                        "query": query,
+                        "total": 0,
+                        "results": [],
+                        "message": f"Nenhum produto encontrado para '{query}' no Mercado Livre"
+                    }
+        
+                return {
+                    "success": True,
+                    "query": query,
+                    "total": total_found,
+                    "results": results,
+                    "search_type": "simple_ml_api"
+                }
+            else:
+                print(f"❌ ML API retornou erro {response.status_code}")
+                return {
+                    "success": False,
+                    "query": query,
+                    "total": 0,
+                    "results": [],
+                    "error": f"Mercado Livre API retornou erro {response.status_code}"
+                }
+                
+    except Exception as e:
+        print(f"❌ Erro na busca: {e}")
         return {
             "success": False,
             "query": query,
@@ -348,124 +538,4 @@ async def listar_alertas(db: Session = Depends(get_db), current_user: Usuario = 
     return alertas
 
 @router.delete("/alertas/{alerta_id}", status_code=204)
-async def remover_alerta(alerta_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
-    alerta = db.query(Alerta).filter(Alerta.id == alerta_id, Alerta.usuario_id == current_user.id).first()
-    if not alerta:
-        raise HTTPException(status_code=404, detail="Alerta não encontrado")
-    db.delete(alerta)
-    db.commit()
-    return
-
-@router.get("/produtos/{produto_id}/resumo_avaliacoes")
-async def resumo_avaliacoes(produto_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
-    produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
-    if not produto:
-        raise HTTPException(status_code=404, detail="Produto não encontrado")
-    avaliacoes = await buscar_avaliacoes_ml(produto.ml_id, current_user.id)
-    resumo = await gerar_resumo_avaliacoes(avaliacoes)
-    return {"resumo": resumo}
-
-# --- TESTES E DIAGNÓSTICOS ---
-@router.get("/test/health")
-async def test_health():
-    """Endpoint para testar se a API está funcionando"""
-    return {"status": "ok", "message": "Backend funcionando corretamente", "timestamp": datetime.utcnow()}
-
-@router.get("/test/mercadolivre", response_model=MLTestResponse)
-async def test_mercadolivre():
-    """Testar conectividade com a API do Mercado Livre (sem autenticação)"""
-    try:
-        # Testar busca pública (sem autenticação)
-        async with httpx.AsyncClient() as client:
-            response = await client.get("https://api.mercadolibre.com/sites/MLB/search?q=teste&limit=1")
-        
-        if response.status_code == 200:
-            data = response.json()
-            return MLTestResponse(
-                success=True,
-                message="Conexão com Mercado Livre OK (acesso público)",
-                data={
-                    "total_results": data.get("paging", {}).get("total", 0),
-                    "sample_product": data.get("results", [{}])[0].get("title", "Nenhum produto") if data.get("results") else "Nenhum resultado"
-                }
-            )
-        else:
-            return MLTestResponse(
-                success=False,
-                message=f"Erro HTTP {response.status_code}",
-                data={}
-            )
-    except Exception as e:
-        return MLTestResponse(
-            success=False,
-            message=f"Erro ao conectar com Mercado Livre: {str(e)}",
-            data={}
-        )
-
-@router.get("/test/search/{query}")
-async def test_search(query: str):
-    """Testar busca de produtos no Mercado Livre (sem autenticação)"""
-    try:
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=5"
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                "success": True,
-                "message": f"Busca por '{query}' realizada com sucesso (acesso público)",
-                "total_results": data.get("paging", {}).get("total", 0),
-                "results": data.get("results", [])[:3]  # Apenas 3 primeiros
-            }
-        else:
-            return {
-                "success": False,
-                "message": f"Erro HTTP {response.status_code}",
-                "note": "APIs avançadas do ML podem precisar de autenticação OAuth",
-                "data": {}
-            }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"Erro na busca: {str(e)}",
-            "data": {}
-        }
-
-@router.get("/test/database")
-async def test_database(db: Session = Depends(get_db)):
-    """Testar conexão com banco de dados"""
-    try:
-        # Teste básico usando text() para queries SQL
-        db.execute(text("SELECT 1"))
-        
-        # Contar usuários
-        total_usuarios = db.query(Usuario).count()
-        total_produtos = db.query(ProdutoMonitorado).count()
-        total_alertas = db.query(Alerta).count()
-        
-        # Obter informações do banco
-        version_result = db.execute(text("SELECT version()"))
-        version = version_result.fetchone()[0] if version_result else "Desconhecida"
-        
-        return {
-            "success": True,
-            "message": "Conexão com banco de dados OK",
-            "database_version": version[:100],  # Primeiros 100 caracteres
-            "stats": {
-                "usuarios": total_usuarios,
-                "produtos": total_produtos,
-                "alertas": total_alertas
-            },
-            "connection_test": "passed"
-        }
-    except Exception as e:
-        logger.error(f"❌ Erro no teste de banco: {e}")
-        return {
-            "success": False,
-            "message": f"Erro no banco de dados: {str(e)}",
-            "stats": {},
-            "connection_test": "failed",
-            "error_type": type(e).__name__
-        }
+async def remover_alerta(alerta_id: int, db: Session = Depends(
