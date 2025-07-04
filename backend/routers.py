@@ -20,6 +20,7 @@ import asyncio
 from openai_utils import gerar_resumo_avaliacoes
 import httpx
 from pydantic import BaseModel
+import traceback
 
 router = APIRouter()
 
@@ -276,56 +277,90 @@ async def search_products_public(query: str):
 async def search_produtos(query: str):
     """Busca produtos no Mercado Livre - PÚBLICA (sem token OAuth)"""
     try:
-        print(f"🔍 Busca pública iniciada: '{query}'")
+        print(f"🔍 DEBUG: Busca pública iniciada para query: '{query}'")
+        print(f"📡 DEBUG: Preparando requisição para ML API...")
         
         # Busca PÚBLICA - SEM TOKEN - direto na API do Mercado Livre
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}"
+        print(f"🌐 DEBUG: URL construída: {url}")
         
         import requests
+        print(f"📦 DEBUG: Módulo requests importado com sucesso")
+        
+        print(f"🚀 DEBUG: Iniciando requisição HTTP...")
         resp = requests.get(url, timeout=10)
+        print(f"📊 DEBUG: Response status code: {resp.status_code}")
+        print(f"📋 DEBUG: Response headers: {dict(resp.headers)}")
         
         if resp.status_code == 401:
+            print(f"❌ DEBUG: Erro 401 - API rejeitou requisição")
             raise HTTPException(status_code=502, detail="API pública do Mercado Livre não aceita Auth Token. Remover qualquer header Authorization dessa rota.")
         
+        print(f"✅ DEBUG: Status code OK, fazendo raise_for_status...")
         resp.raise_for_status()
+        print(f"✅ DEBUG: raise_for_status passou, fazendo parse JSON...")
         data = resp.json()
+        print(f"📄 DEBUG: JSON parseado com sucesso. Keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+        
+        results_count = len(data.get("results", [])) if isinstance(data, dict) else 0
+        print(f"📦 DEBUG: Número de produtos encontrados: {results_count}")
         
         results = []
         for produto in data.get("results", [])[:10]:
+            print(f"🔄 DEBUG: Processando produto ID: {produto.get('id', 'NO_ID')}")
+            
             # Dados do vendedor (opcional, pode dar rate limit)
-            vendedor_id = produto["seller"]["id"]
+            vendedor_id = produto.get("seller", {}).get("id")
+            print(f"👤 DEBUG: Vendedor ID: {vendedor_id}")
+            
             vendedor_info = {}
             try:
-                vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}", timeout=5)
-                vendedor_resp.raise_for_status()
-                vendedor_json = vendedor_resp.json()
-                vendedor_info = {
-                    "id": vendedor_id,
-                    "nickname": vendedor_json.get("nickname"),
-                    "registration_date": vendedor_json.get("registration_date"),
-                    "reputation": vendedor_json.get("seller_reputation"),
-                }
+                if vendedor_id:
+                    print(f"🔄 DEBUG: Buscando dados do vendedor {vendedor_id}...")
+                    vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}", timeout=5)
+                    vendedor_resp.raise_for_status()
+                    vendedor_json = vendedor_resp.json()
+                    vendedor_info = {
+                        "id": vendedor_id,
+                        "nickname": vendedor_json.get("nickname"),
+                        "registration_date": vendedor_json.get("registration_date"),
+                        "reputation": vendedor_json.get("seller_reputation"),
+                    }
+                    print(f"✅ DEBUG: Dados do vendedor obtidos: {vendedor_info.get('nickname', 'NO_NICKNAME')}")
+                else:
+                    print(f"⚠️ DEBUG: Vendedor ID não encontrado no produto")
+                    vendedor_info = {"id": None}
             except Exception:
+                print(f"⚠️ DEBUG: Erro ao buscar vendedor {vendedor_id}, usando dados básicos")
                 vendedor_info = {"id": vendedor_id}
             
+            print(f"🔧 DEBUG: Montando objeto do produto...")
             # Dados completos do produto
             results.append({
-                "id": produto["id"],
-                "title": produto["title"],
-                "price": produto["price"],
-                "available_quantity": produto["available_quantity"],
-                "sold_quantity": produto["sold_quantity"],
-                "permalink": produto["permalink"],
-                "thumbnail": produto["thumbnail"],
-                "condition": produto["condition"],
-                "attributes": produto["attributes"],
+                "id": produto.get("id"),
+                "title": produto.get("title"),
+                "price": produto.get("price"),
+                "available_quantity": produto.get("available_quantity"),
+                "sold_quantity": produto.get("sold_quantity"),
+                "permalink": produto.get("permalink"),
+                "thumbnail": produto.get("thumbnail"),
+                "condition": produto.get("condition"),
+                "attributes": produto.get("attributes", []),
                 "seller": vendedor_info,
             })
+            print(f"✅ DEBUG: Produto {produto.get('id')} adicionado à lista")
         
+        print(f"🎉 DEBUG: Busca concluída com sucesso! Total: {len(results)} produtos")
         return {"success": True, "query": query, "total": len(results), "results": results}
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao buscar produtos: {str(e)}")
+        # LOGGING DETALHADO COM TRACEBACK COMPLETO
+        tb = traceback.format_exc()
+        error_detail = f"Erro ao buscar produtos: {str(e)}\n\nTraceback completo:\n{tb}"
+        print(f"❌ DEBUG: ERRO CRÍTICO:")
+        print(f"❌ DEBUG: Erro: {str(e)}")
+        print(f"❌ DEBUG: Traceback: {tb}")
+        raise HTTPException(status_code=500, detail=error_detail)
 
 # --- HISTÓRICO DE PREÇOS ---
 @router.post("/produtos/{produto_id}/historico", response_model=HistoricoPrecoOut)
