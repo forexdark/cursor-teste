@@ -1,5 +1,8 @@
 import os
 import httpx
+import secrets
+import hashlib
+import base64
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 import logging
@@ -18,6 +21,8 @@ def get_ml_redirect_uri():
 
 # Armazenamento simples do token (em produção, usar Redis ou banco)
 ml_tokens = {}
+# Armazenamento temporário para PKCE code_verifiers
+pkce_codes = {}
 
 class MLTokenManager:
     @staticmethod
@@ -46,7 +51,6 @@ class MLTokenManager:
         # Verificar se o token expirou
         if datetime.now() >= token_info["expires_at"]:
             logger.warning(f"⚠️ Token ML expirado para usuário {user_id}")
-            # Token expirado, tentar renovar
             return MLTokenManager.refresh_token(user_id)
         
         return token_info["access_token"]
@@ -62,10 +66,10 @@ class MLTokenManager:
         
         if not refresh_token:
             logger.warning(f"⚠️ Sem refresh token para usuário {user_id}")
+            del ml_tokens[user_id]
             return None
         
         # TODO: Implementar refresh do token com API do ML
-        # Por enquanto, remover token expirado
         del ml_tokens[user_id]
         logger.info(f"🗑️ Token expirado removido para usuário {user_id}")
         return None
@@ -77,10 +81,29 @@ class MLTokenManager:
             del ml_tokens[user_id]
             logger.info(f"🗑️ Token ML revogado para usuário {user_id}")
 
+def generate_pkce_codes():
+    """Gera code_verifier e code_challenge para PKCE"""
+    # Gerar code_verifier (random string de 43-128 caracteres)
+    code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
+    
+    # Gerar code_challenge (SHA256 hash do code_verifier, base64url encoded)
+    challenge_bytes = hashlib.sha256(code_verifier.encode('utf-8')).digest()
+    code_challenge = base64.urlsafe_b64encode(challenge_bytes).decode('utf-8').rstrip('=')
+    
+    return code_verifier, code_challenge
+
 def get_ml_auth_url(state: str = None) -> str:
-    """Gera URL de autorização OAuth do Mercado Livre"""
+    """Gera URL de autorização OAuth do Mercado Livre com PKCE"""
     if not ML_CLIENT_ID:
         raise ValueError("ML_CLIENT_ID não configurado")
+    
+    # Gerar códigos PKCE
+    code_verifier, code_challenge = generate_pkce_codes()
+    
+    # Armazenar code_verifier temporariamente usando state como chave
+    if state:
+        pkce_codes[state] = code_verifier
+        logger.info(f"🔑 PKCE code_verifier armazenado para state: {state[:10]}...")
     
     base_url = "https://auth.mercadolivre.com.br/authorization"
     redirect_uri = get_ml_redirect_uri()
@@ -89,7 +112,9 @@ def get_ml_auth_url(state: str = None) -> str:
         "response_type": "code",
         "client_id": ML_CLIENT_ID,
         "redirect_uri": redirect_uri,
-        "scope": "read write offline_access"
+        "scope": "read write offline_access",
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256"
     }
     
     if state:
@@ -98,13 +123,24 @@ def get_ml_auth_url(state: str = None) -> str:
     query_params = "&".join([f"{k}={v}" for k, v in params.items()])
     auth_url = f"{base_url}?{query_params}"
     
-    logger.info(f"🔗 URL OAuth ML gerada: {auth_url[:50]}...")
+    logger.info(f"🔗 URL OAuth ML gerada com PKCE: {auth_url[:80]}...")
     return auth_url
 
-async def exchange_code_for_token(code: str) -> dict:
-    """Troca o código OAuth por token de acesso"""
+async def exchange_code_for_token(code: str, state: str = None) -> dict:
+    """Troca o código OAuth por token de acesso usando PKCE"""
     if not ML_CLIENT_ID or not ML_CLIENT_SECRET:
         raise ValueError("Credenciais ML não configuradas")
+    
+    # Recuperar code_verifier armazenado
+    code_verifier = None
+    if state and state in pkce_codes:
+        code_verifier = pkce_codes[state]
+        logger.info(f"🔑 Code verifier recuperado para state: {state[:10]}...")
+        # Limpar após uso
+        del pkce_codes[state]
+    else:
+        logger.warning(f"⚠️ Code verifier não encontrado para state: {state}")
+        # Tentar mesmo assim, talvez o ML não exija sempre
     
     token_url = f"{ML_API_URL}/oauth/token"
     redirect_uri = get_ml_redirect_uri()
@@ -117,7 +153,12 @@ async def exchange_code_for_token(code: str) -> dict:
         "redirect_uri": redirect_uri
     }
     
-    logger.info(f"🔄 Trocando código por token ML...")
+    # Adicionar code_verifier se disponível
+    if code_verifier:
+        data["code_verifier"] = code_verifier
+        logger.info(f"✅ Incluindo code_verifier na requisição")
+    
+    logger.info(f"🔄 Trocando código por token ML com PKCE...")
     
     async with httpx.AsyncClient() as client:
         response = await client.post(token_url, data=data)
@@ -127,8 +168,17 @@ async def exchange_code_for_token(code: str) -> dict:
             logger.info(f"✅ Token ML obtido com sucesso")
             return token_data
         else:
-            error_msg = f"Erro ao obter token ML: {response.status_code} - {response.text}"
+            error_text = response.text
+            error_msg = f"Erro ao obter token ML: {response.status_code} - {error_text}"
             logger.error(f"❌ {error_msg}")
+            
+            # Log detalhado do erro para debug
+            try:
+                error_json = response.json()
+                logger.error(f"❌ Detalhes do erro ML: {error_json}")
+            except:
+                logger.error(f"❌ Erro ML (texto): {error_text[:200]}")
+            
             raise Exception(error_msg)
 
 async def buscar_produto_ml(ml_id: str, user_id: int = None):
@@ -225,3 +275,9 @@ def check_ml_configuration() -> Dict[str, bool]:
         "client_secret_configured": bool(ML_CLIENT_SECRET),
         "ready_for_oauth": bool(ML_CLIENT_ID and ML_CLIENT_SECRET)
     }
+
+def cleanup_expired_pkce_codes():
+    """Limpar códigos PKCE expirados (chamado periodicamente)"""
+    # Em uma implementação real, usaria timestamp para expirar
+    # Por ora, os códigos são limpos após uso
+    pass

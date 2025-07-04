@@ -10,18 +10,24 @@ export default function MercadoLivreCallback() {
   const searchParams = useSearchParams();
   const { backendJwt } = useAuth();
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
-  const [message, setMessage] = useState('Processando autorização...');
+  const [message, setMessage] = useState('Processando autorização do Mercado Livre...');
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
 
   useEffect(() => {
     const processCallback = async () => {
       try {
+        setDebugInfo(prev => [...prev, '🔄 Iniciando processamento do callback']);
+        
         // Obter código e state da URL
         const code = searchParams.get('code');
         const state = searchParams.get('state');
         const error = searchParams.get('error');
 
+        setDebugInfo(prev => [...prev, `📋 Parâmetros: code=${code ? 'presente' : 'ausente'}, state=${state ? 'presente' : 'ausente'}, error=${error || 'nenhum'}`]);
+
         // Se houve erro no OAuth
         if (error) {
+          setDebugInfo(prev => [...prev, `❌ Erro OAuth: ${error}`]);
           setStatus('error');
           setMessage(`Erro na autorização: ${error}`);
           setTimeout(() => window.close(), 3000);
@@ -30,6 +36,7 @@ export default function MercadoLivreCallback() {
 
         // Se não tem código, houve problema
         if (!code) {
+          setDebugInfo(prev => [...prev, '❌ Código de autorização não encontrado na URL']);
           setStatus('error');
           setMessage('Código de autorização não encontrado');
           setTimeout(() => window.close(), 3000);
@@ -38,6 +45,7 @@ export default function MercadoLivreCallback() {
 
         // Se não tem JWT do backend, usuário não está logado
         if (!backendJwt) {
+          setDebugInfo(prev => [...prev, '❌ Token JWT não encontrado']);
           setStatus('error');
           setMessage('Sessão expirada. Faça login novamente.');
           setTimeout(() => {
@@ -47,7 +55,7 @@ export default function MercadoLivreCallback() {
           return;
         }
 
-        console.log('🔄 Processando callback ML...', { code: code.substring(0, 20) + '...', state });
+        setDebugInfo(prev => [...prev, `🔄 Enviando para backend: code=${code.substring(0, 10)}..., state=${state?.substring(0, 10)}...`]);
 
         // Enviar código para o backend processar
         const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/mercadolivre/callback`, {
@@ -62,9 +70,10 @@ export default function MercadoLivreCallback() {
           })
         });
 
+        setDebugInfo(prev => [...prev, `📡 Response status: ${response.status}`]);
         if (response.ok) {
           const data = await response.json();
-          console.log('✅ Callback processado com sucesso:', data);
+          setDebugInfo(prev => [...prev, '✅ Callback processado com sucesso']);
           
           setStatus('success');
           setMessage('Autorização concluída com sucesso!');
@@ -88,7 +97,7 @@ export default function MercadoLivreCallback() {
 
         } else {
           const errorData = await response.json().catch(() => ({}));
-          console.error('❌ Erro no callback:', response.status, errorData);
+          setDebugInfo(prev => [...prev, `❌ Erro ${response.status}: ${JSON.stringify(errorData)}`]);
           
           setStatus('error');
           setMessage(errorData.detail || `Erro no servidor: ${response.status}`);
@@ -97,7 +106,7 @@ export default function MercadoLivreCallback() {
         }
 
       } catch (error) {
-        console.error('❌ Erro ao processar callback:', error);
+        setDebugInfo(prev => [...prev, `❌ Erro de rede: ${error}`]);
         setStatus('error');
         setMessage('Erro de conexão. Tente novamente.');
         setTimeout(() => window.close(), 3000);
@@ -158,6 +167,20 @@ export default function MercadoLivreCallback() {
 
           {status === 'error' && (
             <div className="mt-4">
+              {/* Debug info em desenvolvimento */}
+              {process.env.NODE_ENV === 'development' && debugInfo.length > 0 && (
+                <details className="mb-4 text-left">
+                  <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                    Debug Info (desenvolvimento)
+                  </summary>
+                  <div className="mt-2 p-2 bg-gray-100 rounded text-xs font-mono max-h-32 overflow-y-auto">
+                    {debugInfo.map((info, index) => (
+                      <div key={index} className="text-gray-700">{info}</div>
+                    ))}
+                  </div>
+                </details>
+              )}
+              
               <button
                 onClick={() => window.close()}
                 className="text-xs text-gray-500 hover:text-gray-700 underline"

@@ -208,6 +208,8 @@ async def get_mercadolivre_auth_url(current_user: Usuario = Depends(get_current_
 async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario = Depends(get_current_user)):
     """Processa callback do OAuth do Mercado Livre"""
     try:
+        logger.info(f"🔄 Processando callback ML para usuário {current_user.id}")
+        
         # Verificar se credenciais estão configuradas
         ml_client_id = os.getenv("ML_CLIENT_ID")
         ml_client_secret = os.getenv("ML_CLIENT_SECRET")
@@ -219,10 +221,12 @@ async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario 
             )
         
         # Trocar código por token
-        token_data = await exchange_code_for_token(auth_data.code)
+        token_data = await exchange_code_for_token(auth_data.code, auth_data.state)
         
         # Salvar token para o usuário
         MLTokenManager.save_token(current_user.id, token_data)
+        
+        logger.info(f"✅ Autorização ML concluída para usuário {current_user.id}")
         
         return {
             "success": True,
@@ -231,7 +235,7 @@ async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario 
             "scope": token_data.get("scope")
         }
     except Exception as e:
-        logger.error(f"Erro no callback ML: {e}")
+        logger.error(f"❌ Erro no callback ML para usuário {current_user.id}: {e}")
         raise HTTPException(status_code=400, detail=f"Erro no callback OAuth: {str(e)}")
 
 @router.delete("/auth/mercadolivre/revoke")
