@@ -233,7 +233,7 @@ async def atualizar_produto_ml(produto_id: int, db: Session = Depends(get_db), c
     db.refresh(produto)
     return produto
 
-# --- BUSCA DE PRODUTOS - APENAS CORRIGIDA PARA RETORNAR JSON ---
+# --- BUSCA DE PRODUTOS - VERSÃO ROBUSTA ---
 @router.get("/search/{query}")
 async def search_products_public(query: str):
     """Busca pública de produtos no Mercado Livre (sem autenticação)"""
@@ -270,169 +270,6 @@ async def search_products_public(query: str):
             "results": [],
             "error": str(e),
             "search_type": "public"
-        }
-
-@router.get("/produtos/search-enhanced/{query}")
-async def buscar_produtos_detalhados(query: str, current_user: Usuario = Depends(get_current_user)):
-    """Busca produtos com máximo de detalhes da API do Mercado Livre"""
-    try:
-        print(f"🔍 Busca detalhada iniciada: '{query}' para user {current_user.id}")
-        
-        # 1. Busca inicial na API do ML
-        async with httpx.AsyncClient() as client:
-            search_url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=10"
-            print(f"📡 URL de busca: {search_url}")
-            
-            search_response = await client.get(search_url, timeout=15.0)
-            
-            if search_response.status_code != 200:
-                print(f"❌ Erro na busca inicial: {search_response.status_code}")
-                return {
-                    "success": False,
-                    "query": query,
-                    "error": f"ML API returned {search_response.status_code}",
-                    "results": []
-                }
-            
-            search_data = search_response.json()
-            produtos_base = search_data.get("results", [])
-            
-            if not produtos_base:
-                print("⚠️ Nenhum produto encontrado na busca inicial")
-                return {
-                    "success": False,
-                    "query": query,
-                    "message": "Nenhum produto encontrado no Mercado Livre",
-                    "results": []
-                }
-            
-            print(f"📦 {len(produtos_base)} produtos encontrados na busca inicial")
-            
-            # 2. Enriquecer dados dos primeiros 5 produtos
-            produtos_detalhados = []
-            
-            for i, produto in enumerate(produtos_base[:5]):  # Limitar a 5 para performance
-                try:
-                    produto_id = produto["id"]
-                    print(f"🔍 Detalhando produto {i+1}/5: {produto_id}")
-                    
-                    # Buscar detalhes do produto
-                    produto_detail_response = await client.get(
-                        f"https://api.mercadolibre.com/items/{produto_id}", 
-                        timeout=5.0
-                    )
-                    
-                    produto_detail = produto_detail_response.json() if produto_detail_response.status_code == 200 else {}
-                    
-                    # Buscar dados do vendedor
-                    vendedor_data = {}
-                    if produto.get("seller", {}).get("id"):
-                        vendedor_response = await client.get(
-                            f"https://api.mercadolibre.com/users/{produto['seller']['id']}", 
-                            timeout=3.0
-                        )
-                        vendedor_data = vendedor_response.json() if vendedor_response.status_code == 200 else {}
-                    
-                    # Buscar avaliações (pode falhar, é opcional)
-                    reviews_data = None
-                    try:
-                        reviews_response = await client.get(
-                            f"https://api.mercadolibre.com/reviews/item/{produto_id}",
-                            timeout=3.0
-                        )
-                        if reviews_response.status_code == 200:
-                            reviews_json = reviews_response.json()
-                            reviews_data = {
-                                "rating_average": reviews_json.get("rating_average"),
-                                "total": reviews_json.get("total"),
-                                "reviews": reviews_json.get("reviews", [])[:3]  # Primeiras 3 reviews
-                            }
-                    except:
-                        pass  # Reviews são opcionais
-                    
-                    # Montar produto detalhado
-                    produto_completo = {
-                        "id": produto_id,
-                        "title": produto.get("title", ""),
-                        "price": produto.get("price", 0),
-                        "original_price": produto.get("original_price"),
-                        "currency_id": produto.get("currency_id", "BRL"),
-                        "available_quantity": produto.get("available_quantity", 0),
-                        "sold_quantity": produto.get("sold_quantity", 0),
-                        "condition": produto.get("condition", "unknown"),
-                        "permalink": produto.get("permalink", ""),
-                        "thumbnail": produto.get("thumbnail", ""),
-                        "pictures": produto_detail.get("pictures", [])[:3],  # Primeiras 3 imagens
-                        "attributes": produto.get("attributes", [])[:5],  # Primeiros 5 atributos
-                        "shipping": {
-                            "free_shipping": produto.get("shipping", {}).get("free_shipping", False),
-                            "mode": produto.get("shipping", {}).get("mode"),
-                            "logistic_type": produto.get("shipping", {}).get("logistic_type")
-                        },
-                        "installments": produto.get("installments"),
-                        "seller": {
-                            "id": produto.get("seller", {}).get("id"),
-                            "nickname": vendedor_data.get("nickname"),
-                            "registration_date": vendedor_data.get("registration_date"),
-                            "country_id": vendedor_data.get("country_id"),
-                            "seller_reputation": vendedor_data.get("seller_reputation", {}),
-                            "transactions": vendedor_data.get("seller_reputation", {}).get("transactions", {}),
-                            "metrics": vendedor_data.get("seller_reputation", {}).get("metrics", {})
-                        },
-                        "location": produto.get("location"),
-                        "reviews": reviews_data,
-                        "category_id": produto.get("category_id"),
-                        "listing_type_id": produto.get("listing_type_id"),
-                        "warranty": produto_detail.get("warranty"),
-                        "tags": produto.get("tags", [])
-                    }
-                    
-                    produtos_detalhados.append(produto_completo)
-                    print(f"✅ Produto {produto_id} detalhado com sucesso")
-                    
-                except Exception as e:
-                    print(f"⚠️ Erro ao detalhar produto {produto.get('id', 'unknown')}: {e}")
-                    # Adicionar produto básico mesmo se falhar o detalhamento
-                    produtos_detalhados.append({
-                        "id": produto.get("id"),
-                        "title": produto.get("title", ""),
-                        "price": produto.get("price", 0),
-                        "available_quantity": produto.get("available_quantity", 0),
-                        "permalink": produto.get("permalink", ""),
-                        "thumbnail": produto.get("thumbnail", ""),
-                        "condition": produto.get("condition", "unknown"),
-                        "seller": produto.get("seller", {}),
-                        "shipping": produto.get("shipping", {}),
-                        "error": "Detalhamento parcial"
-                    })
-            
-            print(f"✅ Busca detalhada concluída: {len(produtos_detalhados)} produtos processados")
-            
-            return {
-                "success": True,
-                "query": query,
-                "total": search_data.get("paging", {}).get("total", len(produtos_detalhados)),
-                "available_filters": search_data.get("available_filters", []),
-                "results": produtos_detalhados,
-                "search_type": "enhanced",
-                "ml_api_version": "2025"
-            }
-            
-    except httpx.TimeoutException:
-        print("❌ Timeout na busca do Mercado Livre")
-        return {
-            "success": False,
-            "query": query,
-            "error": "Timeout na busca - tente um termo mais específico",
-            "results": []
-        }
-    except Exception as e:
-        print(f"❌ Erro na busca detalhada: {e}")
-        return {
-            "success": False,
-            "query": query,
-            "error": str(e),
-            "results": []
         }
 
 @router.get("/produtos/search/{query}")
@@ -520,7 +357,6 @@ async def listar_historico(produto_id: int, db: Session = Depends(get_db), curre
 # --- ALERTAS ---
 @router.post("/alertas/", response_model=AlertaOut)
 async def criar_alerta(alerta: AlertaCreate, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
-    # Supondo que alerta tem produto_id e preco_alvo
     db_alerta = Alerta(
         usuario_id=current_user.id,
         produto_id=alerta.produto_id,
@@ -538,4 +374,10 @@ async def listar_alertas(db: Session = Depends(get_db), current_user: Usuario = 
     return alertas
 
 @router.delete("/alertas/{alerta_id}", status_code=204)
-async def remover_alerta(alerta_id: int, db: Session = Depends(
+async def remover_alerta(alerta_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    alerta = db.query(Alerta).filter(Alerta.id == alerta_id, Alerta.usuario_id == current_user.id).first()
+    if not alerta:
+        raise HTTPException(status_code=404, detail="Alerta não encontrado")
+    db.delete(alerta)
+    db.commit()
+    return
