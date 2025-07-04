@@ -123,7 +123,7 @@ async def buscar_produto_ml(ml_id: str, user_id: int = None):
         }
 
 async def buscar_produtos_ml(query: str, user_id: int = None, limit: int = 20):
-    """Busca produtos no Mercado Livre"""
+    """Busca produtos no Mercado Livre (com ou sem autenticação)"""
     url = f"{ML_API_URL}/sites/MLB/search"
     params = {
         "q": query,
@@ -137,21 +137,11 @@ async def buscar_produtos_ml(query: str, user_id: int = None, limit: int = 20):
         if token:
             headers["Authorization"] = f"Bearer {token}"
     
-    try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(url, params=params, headers=headers)
-            if resp.status_code == 200:
-                return resp.json()
-            else:
-                # Se busca autenticada falhar, tentar sem autenticação
-                if headers and resp.status_code == 401:
-                    resp = await client.get(url, params=params)
-                    if resp.status_code == 200:
-                        return resp.json()
-                return None
-    except Exception as e:
-        print(f"Erro na busca ML: {e}")
-        return None
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(url, params=params, headers=headers)
+        if resp.status_code != 200:
+            return None
+        return resp.json()
 
 async def buscar_avaliacoes_ml(ml_id: str, user_id: int = None):
     """Busca avaliações do produto (com ou sem autenticação)"""

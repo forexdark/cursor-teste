@@ -226,52 +226,35 @@ async def atualizar_produto_ml(produto_id: int, db: Session = Depends(get_db), c
     db.refresh(produto)
     return produto
 
-# --- BUSCA DE PRODUTOS - CORRIGIDA ---
+# --- BUSCA DE PRODUTOS - APENAS CORRIGIDA PARA RETORNAR JSON ---
 @router.get("/produtos/search/{query}")
 async def buscar_produtos(query: str, current_user: Usuario = Depends(get_current_user)):
-    """Busca produtos no Mercado Livre"""
+    """Busca produtos no Mercado Livre usando token do usuário quando disponível"""
     try:
-        # Validar query
-        if not query or len(query.strip()) < 2:
+        resultados = await buscar_produtos_ml(query, current_user.id)
+        
+        if not resultados:
             return {
                 "success": False,
                 "query": query,
                 "total": 0,
                 "results": [],
-                "message": "Termo de busca deve ter pelo menos 2 caracteres"
-            }
-        
-        query_clean = query.strip()[:100]
-        
-        # Buscar produtos
-        resultados = await buscar_produtos_ml(query_clean, current_user.id)
-        
-        if not resultados:
-            return {
-                "success": False,
-                "query": query_clean,
-                "total": 0,
-                "results": [],
-                "message": "Nenhum produto encontrado ou erro na API do Mercado Livre"
+                "message": "Nenhum produto encontrado"
             }
         
         return {
             "success": True,
-            "query": query_clean,
+            "query": query,
             "total": resultados.get("paging", {}).get("total", 0),
-            "results": resultados.get("results", []),
-            "message": "Busca realizada com sucesso"
+            "results": resultados.get("results", [])
         }
-        
     except Exception as e:
-        # Retornar erro estruturado ao invés de HTTPException
         return {
             "success": False,
             "query": query,
             "total": 0,
             "results": [],
-            "error": str(e)[:100],
-            "message": "Erro na busca. Tente novamente."
+            "error": str(e)
         }
 
 # --- HISTÓRICO DE PREÇOS ---

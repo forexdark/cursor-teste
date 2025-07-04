@@ -31,7 +31,6 @@ origins = [
     os.getenv("FRONTEND_URL", "https://vigia-meli.vercel.app"),
     "http://localhost:3000",
     "https://vigia-meli.vercel.app",
-    "https://vigia-meli.vercel.app",
     "https://*.vercel.app"
 ]
 
