@@ -43,11 +43,19 @@ async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     existing_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
     if existing_user:
         print(f"❌ DEBUG: Email já existe: {usuario.email}")
-        raise HTTPException(status_code=400, detail="Email já cadastrado")
+        raise HTTPException(
+            status_code=400, 
+            detail="Email já cadastrado",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
     
     # Hash da senha
     if not usuario.senha or len(usuario.senha) < 6:
-        raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 6 caracteres")
+        raise HTTPException(
+            status_code=400, 
+            detail="Senha deve ter pelo menos 6 caracteres",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
         
     senha_hash = pwd_context.hash(usuario.senha)
     print(f"🔒 DEBUG: Senha hash gerado: Sim")
@@ -69,7 +77,11 @@ async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     except Exception as e:
         print(f"❌ DEBUG: Erro ao criar usuário: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Erro interno do servidor")
+        raise HTTPException(
+            status_code=500, 
+            detail="Erro interno do servidor",
+            headers={"Access-Control-Allow-Origin": "*"}
+        )
     
     return db_usuario
 
