@@ -69,7 +69,7 @@ class UsuarioOut(UsuarioBase):
     is_active: bool
     is_admin: bool
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ProdutoMonitoradoBase(BaseModel):
     ml_id: str
@@ -85,7 +85,7 @@ class ProdutoMonitoradoOut(ProdutoMonitoradoBase):
     estoque_atual: int
     criado_em: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class HistoricoPrecoOut(BaseModel):
     id: int
@@ -93,7 +93,7 @@ class HistoricoPrecoOut(BaseModel):
     estoque: int
     data: datetime
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class AlertaBase(BaseModel):
     preco_alvo: float
@@ -106,4 +106,4 @@ class AlertaOut(AlertaBase):
     enviado: bool
     criado_em: datetime
     class Config:
-        orm_mode = True 
+        from_attributes = True
