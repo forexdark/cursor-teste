@@ -210,21 +210,35 @@ export default function AdicionarProduto() {
         
         // Verificar se a busca foi bem-sucedida
         if (!data.success) {
-          const errorMsg = data.message || data.error || "Erro na busca";
+          const errorMsg = data.error || data.message || "Erro na busca";
           console.warn(`⚠️ Busca não bem-sucedida: ${errorMsg}`);
-          setError(errorMsg);
+          
+          // Mostrar TODOS os detalhes do erro (conforme solicitado)
+          let detailedError = errorMsg;
+          if (data.status_code) {
+            detailedError += ` (Status: ${data.status_code})`;
+          }
+          if (data.env) {
+            detailedError += ` [${data.env}]`;
+          }
+          if (data.ml_response && typeof data.ml_response === 'string') {
+            detailedError += ` - ${data.ml_response.substring(0, 100)}`;
+          }
+          
+          setError(detailedError);
           setSugestoes([]);
           setShowSuggestions(true);
           return;
         }
         
         // Extrair produtos
-        const produtos = data.results || [];
+        const mlResponse = data.ml_response || {};
+        const produtos = mlResponse.results || [];
         console.log(`📦 Produtos encontrados: ${produtos.length}`);
         
         if (process.env.NODE_ENV === 'development') {
-          console.log(`🔍 Tipo de busca: ${data.search_type || 'unknown'}`);
-          console.log(`📊 Total disponível: ${data.total || 0}`);
+          console.log(`🔍 Resposta completa ML:`, mlResponse);
+          console.log(`📊 Total disponível: ${mlResponse.paging?.total || 0}`);
           
           // Log mais detalhado para produtos
           if (produtos.length > 0) {

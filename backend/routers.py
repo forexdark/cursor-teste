@@ -287,65 +287,64 @@ async def search_products_public(query: str):
 @router.get("/produtos/search/{query}")
 async def search_produtos_ml(query: str):
     """
-    Busca simples na API pública do Mercado Livre
-    Implementação direta: requests.get(url) sem headers
+    🎯 BUSCA MERCADO LIVRE - DEBUG COMPLETO
+    
+    Implementação exata conforme solicitado:
+    - requests.get(url) puro sem headers
+    - Logs detalhados antes e depois
+    - Formato de retorno padronizado
     """
+    import requests
+    import os
+    
     try:
-        print(f"🔍 Buscando: '{query}'")
-        
         # URL da API pública do Mercado Livre
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}"
-        print(f"📡 URL: {url}")
         
-        # Requisição simples sem headers (conforme solicitado)
-        import requests
+        # LOGS ANTES DA CHAMADA
+        print(f"\n\n🌐 [DEBUG] ML URL: {url}")
+        environment = 'Railway' if 'RAILWAY_STATIC_URL' in os.environ else 'Local'
+        print(f"🟩 [DEBUG] Ambiente: {environment}")
+        
+        # CHAMADA PURA - SEM HEADERS
         resp = requests.get(url)
         
-        print(f"📊 Status: {resp.status_code}")
+        # LOGS APÓS A CHAMADA
+        print(f"🟦 [DEBUG] Headers enviados: {dict(resp.request.headers)}")
+        print(f"🟧 [DEBUG] Status code: {resp.status_code}")
+        print(f"🟥 [DEBUG] Response text: {resp.text[:500]}")
+        print(f"🟨 [DEBUG] Response headers: {dict(resp.headers)}")
         
+        # VERIFICAR SUCESSO
         if resp.status_code == 200:
             data = resp.json()
-            results = data.get("results", [])
-            print(f"✅ Encontrados: {len(results)} produtos")
+            print(f"✅ [DEBUG] JSON parseado com sucesso - {len(data.get('results', []))} produtos")
             
             return {
                 "success": True,
                 "query": query,
-                "total": data.get("paging", {}).get("total", 0),
-                "results": results[:20],  # Limitar a 20 resultados
-                "search_type": "ml_public"
+                "ml_response": data
             }
         else:
-            error_msg = f"Erro {resp.status_code} na API do Mercado Livre"
-            if resp.status_code == 404:
-                error_msg = "Nenhum produto encontrado para este termo"
-            elif resp.status_code >= 500:
-                error_msg = "Mercado Livre temporariamente indisponível"
-            
-            print(f"❌ {error_msg}")
+            print(f"❌ [DEBUG] Erro HTTP {resp.status_code}")
             return {
                 "success": False,
-                "query": query,
-                "error": error_msg,
-                "results": [],
-                "status_code": resp.status_code
+                "error": f"Erro {resp.status_code} ao chamar API ML",
+                "status_code": resp.status_code,
+                "ml_response": resp.text,
+                "headers": dict(resp.headers),
+                "request_headers": dict(resp.request.headers),
+                "env": environment
             }
         
     except Exception as e:
-        print(f"❌ Erro: {str(e)}")
-        
-        # Mensagem amigável para o usuário
-        error_msg = "Erro de conexão com o Mercado Livre. Tente novamente."
-        if "timeout" in str(e).lower():
-            error_msg = "Busca muito lenta. Tente um termo mais específico."
-        elif "connection" in str(e).lower():
-            error_msg = "Sem conexão com a internet. Verifique sua rede."
-        
+        import traceback
+        print(f"❌ [DEBUG] Exception: {str(e)}")
+        print(f"❌ [DEBUG] Traceback: {traceback.format_exc()}")
         return {
             "success": False,
-            "query": query,
-            "error": error_msg,
-            "results": []
+            "error": str(e),
+            "trace": traceback.format_exc()
         }
 
 # --- HISTÓRICO DE PREÇOS ---
