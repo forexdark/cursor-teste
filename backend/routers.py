@@ -227,6 +227,44 @@ async def atualizar_produto_ml(produto_id: int, db: Session = Depends(get_db), c
     return produto
 
 # --- BUSCA DE PRODUTOS - APENAS CORRIGIDA PARA RETORNAR JSON ---
+@router.get("/search/{query}")
+async def search_products_public(query: str):
+    """Busca pública de produtos no Mercado Livre (sem autenticação)"""
+    try:
+        import httpx
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=15"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=10.0)
+            
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "success": True,
+                "query": query,
+                "total": data.get("paging", {}).get("total", 0),
+                "results": data.get("results", []),
+                "search_type": "public"
+            }
+        else:
+            return {
+                "success": False,
+                "query": query,
+                "total": 0,
+                "results": [],
+                "error": f"ML API returned {response.status_code}",
+                "search_type": "public"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "query": query,
+            "total": 0,
+            "results": [],
+            "error": str(e),
+            "search_type": "public"
+        }
+
 @router.get("/produtos/search/{query}")
 async def buscar_produtos(query: str, current_user: Usuario = Depends(get_current_user)):
     """Busca produtos no Mercado Livre usando token do usuário quando disponível"""
