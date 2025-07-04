@@ -188,43 +188,46 @@ async def buscar_produto_ml(ml_id: str, user_id: int = None):
         }
 
 async def buscar_produtos_ml(query: str, user_id: int = None, limit: int = 20):
-    """Busca produtos no Mercado Livre (com ou sem autenticação) - VERSÃO MELHORADA"""
-    print(f"🔍 buscar_produtos_ml chamada: query='{query}', user_id={user_id}, limit={limit}")
+    """
+    🚨 BUSCA MERCADO LIVRE - REQUESTS PURO
     
-    url = f"{ML_API_URL}/sites/MLB/search"
-    params = {
-        "q": query,
-        "limit": limit,
-        "offset": 0
-    }
-    headers = {}
+    Para busca pública: ZERO headers, ZERO parâmetros extras
+    Para busca autenticada: Apenas Authorization header se necessário
+    """
+    print(f"🔍 ML SEARCH: query='{query}', user_id={user_id}")
     
-    # Se tiver token do usuário, usar para busca autenticada
-    if user_id:
-        token = MLTokenManager.get_token(user_id)
-        if token:
-            print(f"🔐 Usando token OAuth para user {user_id}")
-            headers["Authorization"] = f"Bearer {token}"
-        else:
-            print(f"⚠️ Nenhum token válido para user {user_id}")
-    else:
-        print("🌐 Busca pública (sem autenticação)")
+    # URL base
+    base_url = f"{ML_API_URL}/sites/MLB/search?q={query}&limit={limit}"
     
-    print(f"📡 Fazendo requisição: {url} com params {params}")
-    
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.get(url, params=params, headers=headers, timeout=15.0)
-            print(f"📊 Resposta ML: {resp.status_code}")
-            
-            if resp.status_code != 200:
-                print(f"❌ ML API erro: {resp.status_code} - {resp.text[:200]}")
-                return None
-            
+    try:
+        if user_id:
+            # Busca autenticada (se tiver token)
+            token = MLTokenManager.get_token(user_id)
+            if token:
+                print(f"🔐 Busca autenticada para user {user_id}")
+                async with httpx.AsyncClient() as client:
+                    headers = {"Authorization": f"Bearer {token}"}
+                    resp = await client.get(base_url, headers=headers)
+                    if resp.status_code == 200:
+                        return resp.json()
+                    print(f"⚠️ Busca autenticada falhou ({resp.status_code}), usando pública")
+        
+        # Busca pública - REQUESTS PURO
+        print(f"🌐 Busca pública (requests.get puro)")
+        import requests
+        
+        # 🔥 ZERO PARÂMETROS - A API pública rejeita qualquer coisa extra
+        resp = requests.get(base_url)
+        
+        if resp.status_code == 200:
             return resp.json()
-        except Exception as e:
-            print(f"❌ Erro na requisição ML: {e}")
+        else:
+            print(f"❌ Busca pública falhou: {resp.status_code}")
             return None
+            
+    except Exception as e:
+        print(f"❌ Erro geral na busca ML: {e}")
+        return None
 
 async def buscar_avaliacoes_ml(ml_id: str, user_id: int = None):
     """Busca avaliações do produto (com ou sem autenticação)"""

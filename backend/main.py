@@ -9,6 +9,20 @@ import uvicorn
 from datetime import datetime, timezone
 import logging
 from database import initialize_database
+import requests
+
+# 🚨 CONFIGURAÇÃO GLOBAL DO REQUESTS - GARANTIR QUE NÃO HÁ HEADERS PADRÃO
+# Limpar qualquer configuração global que possa interferir
+requests.adapters.DEFAULT_RETRIES = 0  # Desabilitar retries automáticos
+
+# Verificar se não há sessão global configurada
+print("🔧 STARTUP: Verificando configuração global do requests...")
+default_session = requests.Session()
+print(f"🔧 STARTUP: Headers padrão da sessão: {dict(default_session.headers)}")
+if default_session.headers:
+    print("⚠️ STARTUP: Limpando headers padrão da sessão global...")
+    default_session.headers.clear()
+print("✅ STARTUP: Sessão requests limpa")
 
 # Carregar variáveis de ambiente
 load_dotenv()

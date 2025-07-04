@@ -274,105 +274,64 @@ async def search_products_public(query: str):
         }
 
 @router.get("/produtos/search/{query}")
-async def search_produtos(query: str):
-    """Busca produtos no Mercado Livre - PÚBLICA (sem token OAuth)"""
+async def search_produtos_ml(query: str):
+    """
+    🎯 BUSCA PÚBLICA MERCADO LIVRE - OBRIGATORIAMENTE SEM HEADERS
+    
+    Esta função USA APENAS requests.get(url) SEM NENHUM PARÂMETRO EXTRA.
+    Qualquer header, timeout, param, etc. causa erro 401 na API pública do ML.
+    """
     try:
-        print(f"🔍 DEBUG: Busca pública iniciada para query: '{query}'")
-        print(f"📡 DEBUG: Preparando requisição PÚBLICA (sem auth) para ML API...")
+        print(f"🔍 SEARCH: Iniciando busca para '{query}'")
         
-        # Busca PÚBLICA - SEM TOKEN - direto na API do Mercado Livre
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}"
-        print(f"🌐 DEBUG: URL construída: {url}")
+        # URL da API pública do Mercado Livre
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=20"
+        print(f"🌐 URL: {url}")
         
+        # 🚨 CRITICAL: USAR APENAS requests.get(url) - NADA MAIS!
         import requests
-        print(f"📦 DEBUG: Módulo requests importado com sucesso")
+        print(f"📡 Fazendo requests.get(url) PURO (sem headers, params, timeout, etc.)")
         
-        # ZERO HEADERS - API pública do ML rejeita qualquer header extra
-        print(f"📋 DEBUG: Fazendo requisição SEM NENHUM HEADER (requests.get puro)")
-        
-        print(f"🚀 DEBUG: Iniciando requisição HTTP...")
+        # 🔥 VERSÃO MAIS PURA POSSÍVEL - ZERO PARÂMETROS
         resp = requests.get(url)
-        print(f"📊 DEBUG: Response status code: {resp.status_code}")
-        print(f"📋 DEBUG: Response text preview: {resp.text[:200]}...")
         
-        if resp.status_code == 401:
-            print(f"❌ DEBUG: Erro 401 - API rejeitou requisição")
-            raise HTTPException(status_code=502, detail="API pública do Mercado Livre não aceita NENHUM header extra. Usar apenas requests.get(url) puro.")
+        print(f"📊 Status: {resp.status_code}")
         
+        # Verificar se deu erro
         if resp.status_code != 200:
-            print(f"❌ DEBUG: Status code inesperado: {resp.status_code}")
-            print(f"❌ DEBUG: Response text: {resp.text}")
-            raise HTTPException(status_code=502, detail=f"Mercado Livre API retornou status {resp.status_code}")
+            print(f"❌ Erro {resp.status_code}: {resp.text[:300]}")
+            return {
+                "success": False,
+                "query": query,
+                "error": f"ML API status {resp.status_code}",
+                "results": []
+            }
         
-        print(f"✅ DEBUG: Status code OK, fazendo raise_for_status...")
-        resp.raise_for_status()
-        print(f"✅ DEBUG: raise_for_status passou, fazendo parse JSON...")
+        # Parse do JSON
         data = resp.json()
-        print(f"📄 DEBUG: JSON parseado com sucesso. Keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+        print(f"✅ JSON parsed. Produtos encontrados: {len(data.get('results', []))}")
         
-        results_count = len(data.get("results", [])) if isinstance(data, dict) else 0
-        print(f"📦 DEBUG: Número de produtos encontrados: {results_count}")
-        
-        if results_count == 0:
-            print(f"⚠️ DEBUG: Nenhum resultado encontrado para query '{query}'")
-            return {"success": True, "query": query, "total": 0, "results": [], "message": "Nenhum produto encontrado"}
-        
-        results = []
-        for produto in data.get("results", [])[:10]:
-            print(f"🔄 DEBUG: Processando produto ID: {produto.get('id', 'NO_ID')}")
-            
-            # Dados do vendedor (opcional, pode dar rate limit)
-            vendedor_id = produto.get("seller", {}).get("id")
-            print(f"👤 DEBUG: Vendedor ID: {vendedor_id}")
-            
-            vendedor_info = {}
-            try:
-                if vendedor_id:
-                    print(f"🔄 DEBUG: Buscando dados do vendedor {vendedor_id}...")
-                    vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}")
-                    vendedor_resp.raise_for_status()
-                    vendedor_json = vendedor_resp.json()
-                    vendedor_info = {
-                        "id": vendedor_id,
-                        "nickname": vendedor_json.get("nickname"),
-                        "registration_date": vendedor_json.get("registration_date"),
-                        "reputation": vendedor_json.get("seller_reputation"),
-                    }
-                    print(f"✅ DEBUG: Dados do vendedor obtidos: {vendedor_info.get('nickname', 'NO_NICKNAME')}")
-                else:
-                    print(f"⚠️ DEBUG: Vendedor ID não encontrado no produto")
-                    vendedor_info = {"id": None}
-            except Exception as e:
-                print(f"⚠️ DEBUG: Erro ao buscar vendedor {vendedor_id}: {str(e)}, usando dados básicos")
-                vendedor_info = {"id": vendedor_id}
-            
-            print(f"🔧 DEBUG: Montando objeto do produto...")
-            # Dados completos do produto
-            results.append({
-                "id": produto.get("id"),
-                "title": produto.get("title"),
-                "price": produto.get("price"),
-                "available_quantity": produto.get("available_quantity"),
-                "sold_quantity": produto.get("sold_quantity"),
-                "permalink": produto.get("permalink"),
-                "thumbnail": produto.get("thumbnail"),
-                "condition": produto.get("condition"),
-                "attributes": produto.get("attributes", []),
-                "seller": vendedor_info,
-            })
-            print(f"✅ DEBUG: Produto {produto.get('id')} adicionado à lista")
-        
-        print(f"🎉 DEBUG: Busca concluída com sucesso! Total: {len(results)} produtos")
-        return {"success": True, "query": query, "total": len(results), "results": results}
+        # Retornar dados simples
+        return {
+            "success": True,
+            "query": query,
+            "total": data.get("paging", {}).get("total", 0),
+            "results": data.get("results", [])[:15],  # Limitar a 15
+            "search_type": "ml_public_api"
+        }
         
     except Exception as e:
-        # LOGGING DETALHADO COM TRACEBACK COMPLETO
         tb = traceback.format_exc()
-        error_detail = f"Erro ao buscar produtos: {str(e)}\n\nTraceback completo:\n{tb}"
-        print(f"❌ DEBUG: ERRO CRÍTICO:")
-        print(f"❌ DEBUG: Erro: {str(e)}")
-        print(f"❌ DEBUG: Traceback: {tb}")
-        raise HTTPException(status_code=500, detail=error_detail)
+        print(f"❌ ERRO FATAL: {str(e)}")
+        print(f"❌ TRACEBACK: {tb}")
+        
+        return {
+            "success": False,
+            "query": query,
+            "error": str(e),
+            "traceback": tb,
+            "results": []
+        }
 
 # --- HISTÓRICO DE PREÇOS ---
 @router.post("/produtos/{produto_id}/historico", response_model=HistoricoPrecoOut)
