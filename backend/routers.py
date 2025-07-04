@@ -278,7 +278,7 @@ async def search_produtos(query: str):
     """Busca produtos no Mercado Livre - PÚBLICA (sem token OAuth)"""
     try:
         print(f"🔍 DEBUG: Busca pública iniciada para query: '{query}'")
-        print(f"📡 DEBUG: Preparando requisição para ML API...")
+        print(f"📡 DEBUG: Preparando requisição PÚBLICA (sem auth) para ML API...")
         
         # Busca PÚBLICA - SEM TOKEN - direto na API do Mercado Livre
         url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}"
@@ -287,14 +287,27 @@ async def search_produtos(query: str):
         import requests
         print(f"📦 DEBUG: Módulo requests importado com sucesso")
         
+        # GARANTIR que não há NENHUM header Authorization
+        headers = {
+            'User-Agent': 'VigIA/1.0',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        }
+        print(f"📋 DEBUG: Headers preparados (SEM Authorization): {headers}")
+        
         print(f"🚀 DEBUG: Iniciando requisição HTTP...")
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url, headers=headers, timeout=10)
         print(f"📊 DEBUG: Response status code: {resp.status_code}")
-        print(f"📋 DEBUG: Response headers: {dict(resp.headers)}")
+        print(f"📋 DEBUG: Response text preview: {resp.text[:200]}...")
         
         if resp.status_code == 401:
             print(f"❌ DEBUG: Erro 401 - API rejeitou requisição")
             raise HTTPException(status_code=502, detail="API pública do Mercado Livre não aceita Auth Token. Remover qualquer header Authorization dessa rota.")
+        
+        if resp.status_code != 200:
+            print(f"❌ DEBUG: Status code inesperado: {resp.status_code}")
+            print(f"❌ DEBUG: Response text: {resp.text}")
+            raise HTTPException(status_code=502, detail=f"Mercado Livre API retornou status {resp.status_code}")
         
         print(f"✅ DEBUG: Status code OK, fazendo raise_for_status...")
         resp.raise_for_status()
@@ -304,6 +317,10 @@ async def search_produtos(query: str):
         
         results_count = len(data.get("results", [])) if isinstance(data, dict) else 0
         print(f"📦 DEBUG: Número de produtos encontrados: {results_count}")
+        
+        if results_count == 0:
+            print(f"⚠️ DEBUG: Nenhum resultado encontrado para query '{query}'")
+            return {"success": True, "query": query, "total": 0, "results": [], "message": "Nenhum produto encontrado"}
         
         results = []
         for produto in data.get("results", [])[:10]:
@@ -317,7 +334,7 @@ async def search_produtos(query: str):
             try:
                 if vendedor_id:
                     print(f"🔄 DEBUG: Buscando dados do vendedor {vendedor_id}...")
-                    vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}", timeout=5)
+                    vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}", headers=headers, timeout=5)
                     vendedor_resp.raise_for_status()
                     vendedor_json = vendedor_resp.json()
                     vendedor_info = {
@@ -330,8 +347,8 @@ async def search_produtos(query: str):
                 else:
                     print(f"⚠️ DEBUG: Vendedor ID não encontrado no produto")
                     vendedor_info = {"id": None}
-            except Exception:
-                print(f"⚠️ DEBUG: Erro ao buscar vendedor {vendedor_id}, usando dados básicos")
+            except Exception as e:
+                print(f"⚠️ DEBUG: Erro ao buscar vendedor {vendedor_id}: {str(e)}, usando dados básicos")
                 vendedor_info = {"id": vendedor_id}
             
             print(f"🔧 DEBUG: Montando objeto do produto...")
