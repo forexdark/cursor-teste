@@ -287,22 +287,17 @@ async def search_produtos(query: str):
         import requests
         print(f"📦 DEBUG: Módulo requests importado com sucesso")
         
-        # GARANTIR que não há NENHUM header Authorization
-        headers = {
-            'User-Agent': 'VigIA/1.0',
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        }
-        print(f"📋 DEBUG: Headers preparados (SEM Authorization): {headers}")
+        # ZERO HEADERS - API pública do ML rejeita qualquer header extra
+        print(f"📋 DEBUG: Fazendo requisição SEM NENHUM HEADER (requests.get puro)")
         
         print(f"🚀 DEBUG: Iniciando requisição HTTP...")
-        resp = requests.get(url, headers=headers, timeout=10)
+        resp = requests.get(url, timeout=10)
         print(f"📊 DEBUG: Response status code: {resp.status_code}")
         print(f"📋 DEBUG: Response text preview: {resp.text[:200]}...")
         
         if resp.status_code == 401:
             print(f"❌ DEBUG: Erro 401 - API rejeitou requisição")
-            raise HTTPException(status_code=502, detail="API pública do Mercado Livre não aceita Auth Token. Remover qualquer header Authorization dessa rota.")
+            raise HTTPException(status_code=502, detail="API pública do Mercado Livre não aceita NENHUM header extra. Usar apenas requests.get(url) puro.")
         
         if resp.status_code != 200:
             print(f"❌ DEBUG: Status code inesperado: {resp.status_code}")
@@ -334,7 +329,7 @@ async def search_produtos(query: str):
             try:
                 if vendedor_id:
                     print(f"🔄 DEBUG: Buscando dados do vendedor {vendedor_id}...")
-                    vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}", headers=headers, timeout=5)
+                    vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}", timeout=5)
                     vendedor_resp.raise_for_status()
                     vendedor_json = vendedor_resp.json()
                     vendedor_info = {
