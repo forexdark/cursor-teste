@@ -237,99 +237,94 @@ async def atualizar_produto_ml(produto_id: int, db: Session = Depends(get_db), c
 # --- BUSCA DE PRODUTOS - VERSÃO ROBUSTA ---
 @router.get("/search/{query}")
 async def search_products_public(query: str):
-    """Busca pública de produtos no Mercado Livre (sem autenticação)"""
+    """
+    Busca pública de produtos no Mercado Livre (sem autenticação)
+    Endpoint alternativo com implementação robusta
+    """
     try:
-        import httpx
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=15"
+        print(f"🔍 SEARCH PUBLIC: '{query}'")
         
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=10.0)
+        # URL da API pública conforme documentação oficial
+        import requests
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=15"
+        print(f"📡 URL: {url}")
+        
+        # Busca pública sem headers (conforme documentação ML)
+        response = requests.get(url)
+        print(f"📊 Status: {response.status_code}")
             
         if response.status_code == 200:
             data = response.json()
+            print(f"✅ Dados recebidos: {len(data.get('results', []))} produtos")
             return {
                 "success": True,
                 "query": query,
                 "total": data.get("paging", {}).get("total", 0),
                 "results": data.get("results", []),
-                "search_type": "public"
+                "search_type": "public_api"
             }
         else:
+            print(f"❌ Erro HTTP {response.status_code}: {response.text[:200]}")
             return {
                 "success": False,
                 "query": query,
                 "total": 0,
                 "results": [],
-                "error": f"ML API returned {response.status_code}",
-                "search_type": "public"
+                "error": f"API ML retornou {response.status_code}",
+                "search_type": "public_api"
             }
     except Exception as e:
+        print(f"❌ Erro na busca pública: {str(e)}")
         return {
             "success": False,
             "query": query,
             "total": 0,
             "results": [],
             "error": str(e),
-            "search_type": "public"
+            "search_type": "public_api"
         }
 
 @router.get("/produtos/search/{query}")
 async def search_produtos_ml(query: str):
     """
-    🎯 BUSCA PÚBLICA MERCADO LIVRE - OBRIGATORIAMENTE SEM HEADERS
+    🎯 BUSCA PÚBLICA MERCADO LIVRE - API OFICIAL
     
-    Esta função USA APENAS requests.get(url) SEM NENHUM PARÂMETRO EXTRA.
-    Qualquer header, timeout, param, etc. causa erro 401 na API pública do ML.
+    Implementa busca conforme documentação oficial do Mercado Livre.
+    API pública: sem headers nem configurações extras.
     """
     try:
         print(f"🔍 SEARCH: Iniciando busca para '{query}'")
         
-        # URL da API pública do Mercado Livre
-        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=20"
-        print(f"🌐 URL: {url}")
+        # Usar a função corrigida do mercadolivre.py
+        resultado = await buscar_produtos_ml(query, user_id=None, limit=20)
         
-        # 🚨 CRITICAL: USAR APENAS requests.get(url) - NADA MAIS!
-        import requests
-        print(f"📡 Fazendo requests.get(url) PURO (sem headers, params, timeout, etc.)")
-        
-        # 🔥 VERSÃO MAIS PURA POSSÍVEL - ZERO PARÂMETROS
-        resp = requests.get(url)
-        
-        print(f"📊 Status: {resp.status_code}")
-        
-        # Verificar se deu erro
-        if resp.status_code != 200:
-            print(f"❌ Erro {resp.status_code}: {resp.text[:300]}")
+        if resultado:
+            print(f"✅ Busca bem-sucedida. Produtos encontrados: {len(resultado.get('results', []))}")
+            return {
+                "success": True,
+                "query": query,
+                "total": resultado.get("paging", {}).get("total", 0),
+                "results": resultado.get("results", [])[:15],
+                "search_type": "ml_official_api"
+            }
+        else:
+            print(f"❌ Busca retornou None")
             return {
                 "success": False,
                 "query": query,
-                "error": f"ML API status {resp.status_code}",
+                "error": "Nenhum resultado encontrado ou erro na API",
                 "results": []
             }
         
-        # Parse do JSON
-        data = resp.json()
-        print(f"✅ JSON parsed. Produtos encontrados: {len(data.get('results', []))}")
-        
-        # Retornar dados simples
-        return {
-            "success": True,
-            "query": query,
-            "total": data.get("paging", {}).get("total", 0),
-            "results": data.get("results", [])[:15],  # Limitar a 15
-            "search_type": "ml_public_api"
-        }
-        
     except Exception as e:
         tb = traceback.format_exc()
-        print(f"❌ ERRO FATAL: {str(e)}")
-        print(f"❌ TRACEBACK: {tb}")
+        print(f"❌ ERRO na busca: {str(e)}")
+        print(f"📋 TRACEBACK: {tb}")
         
         return {
             "success": False,
             "query": query,
             "error": str(e),
-            "traceback": tb,
             "results": []
         }
 
