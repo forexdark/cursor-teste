@@ -210,22 +210,25 @@ export default function AdicionarProduto() {
         
         // Verificar se a busca foi bem-sucedida
         if (!data.success) {
-          const errorMsg = data.error || data.message || "Erro na busca";
+          const errorMsg = data.error || data.message || "Erro na busca autenticada";
           console.warn(`⚠️ Busca não bem-sucedida: ${errorMsg}`);
           
-          // Mostrar TODOS os detalhes do erro (conforme solicitado)
-          let detailedError = errorMsg;
-          if (data.status_code) {
-            detailedError += ` (Status: ${data.status_code})`;
+          // Verificar se é erro de autorização
+          if (data.action_required === 'oauth_authorization') {
+            setError("⚠️ Autorização do Mercado Livre necessária! Clique em 'Autorizar ML' acima para buscar produtos reais.");
+          } else if (data.action_required === 'check_authorization') {
+            setError("⚠️ Erro na sua autorização do Mercado Livre. Tente revogar e autorizar novamente.");
+          } else {
+            // Mostrar erro detalhado para outros casos
+            let detailedError = errorMsg;
+            if (data.user_id) {
+              detailedError += ` (Usuário: ${data.user_id})`;
+            }
+            if (data.message) {
+              detailedError += ` - ${data.message}`;
+            }
+            setError(detailedError);
           }
-          if (data.env) {
-            detailedError += ` [${data.env}]`;
-          }
-          if (data.ml_response && typeof data.ml_response === 'string') {
-            detailedError += ` - ${data.ml_response.substring(0, 100)}`;
-          }
-          
-          setError(detailedError);
           setSugestoes([]);
           setShowSuggestions(true);
           return;

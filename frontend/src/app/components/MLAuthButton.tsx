@@ -252,8 +252,8 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
             <div className="flex items-center gap-3 p-4 bg-green-50 rounded-lg border border-green-200">
               <LucideCheck className="w-6 h-6 text-green-600" />
               <div>
-                <p className="font-semibold text-green-800">Autorização Ativa</p>
-                <p className="text-sm text-green-600">Você pode buscar produtos reais do Mercado Livre</p>
+                <p className="font-semibold text-green-800">✅ Mercado Livre Autorizado</p>
+                <p className="text-sm text-green-600">Todas as buscas agora usam dados reais e atualizados do ML</p>
               </div>
             </div>
             <Button
@@ -272,8 +272,8 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
             <div className="flex items-start gap-3 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
               <LucideZap className="w-6 h-6 text-yellow-600 mt-0.5" />
               <div>
-                <p className="font-semibold text-yellow-800 mb-2">Autorização Necessária</p>
-                <p className="text-sm text-yellow-700 mb-3">
+                <p className="font-semibold text-yellow-800 mb-2">🔐 OAuth Obrigatório (2025)</p>
+                <p className="text-sm text-yellow-700 mb-3 font-medium">
                   Para acessar dados completos do Mercado Livre, você precisa autorizar nossa aplicação.
                 </p>
                 <ul className="text-xs text-yellow-600 space-y-1">
@@ -281,6 +281,7 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
                   <li>✓ Dados completos dos produtos</li>
                   <li>✓ Informações de vendedores</li>
                   <li>✓ Avaliações e comentários</li>
+                  <li>✓ Conforme novas regras ML 2025</li>
                 </ul>
               </div>
             </div>
