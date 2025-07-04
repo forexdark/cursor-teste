@@ -13,6 +13,39 @@ ML_CLIENT_SECRET = os.getenv("ML_CLIENT_SECRET")
 ML_REDIRECT_URI = os.getenv("ML_REDIRECT_URI", "https://vigia-meli.vercel.app/auth/mercadolivre/callback")
 
 # Armazenamento simples do token (em produção, usar Redis ou banco)
+ml_tokens = {}
+pkce_store = {}
+
+class MLTokenManager:
+    @staticmethod
+    def store_token(user_id: int, token_data: dict):
+        """Armazena o token OAuth do usuário"""
+        expires_in = token_data.get("expires_in", 3600)
+        expires_at = datetime.now() + timedelta(seconds=expires_in)
+        
+        ml_tokens[user_id] = {
+            "access_token": token_data["access_token"],
+            "refresh_token": token_data.get("refresh_token"),
+            "expires_at": expires_at,
+            "user_id": token_data.get("user_id"),
+            "scope": token_data.get("scope")
+        }
+        
+        print(f"🔐 Token armazenado para user {user_id}, expira em {expires_at}")
+
+async def buscar_produto_ml(ml_id: str, user_id: int = None):
+    """
+    Busca produto específico conforme documentação oficial ML
+    Suporta busca pública e autenticada
+    """
+    url = f"{ML_API_URL}/items/{ml_id}"
+    
+    print(f"🔍 Buscando produto {ml_id}, user_id={user_id}")
+    
+    if user_id:
+        # Tentar busca autenticada primeiro
+        token = MLTokenManager.get_token(user_id)
+        if token:
             print(f"🔐 Tentando busca autenticada")
             try:
                 async with httpx.AsyncClient() as client:
@@ -191,20 +224,6 @@ async def exchange_code_for_token(code: str, state: str = None) -> dict:
             print(f"❌ Erro na requisição: {e}")
             raise
 
-async def buscar_produto_ml(ml_id: str, user_id: int = None):
-    """
-    Busca produto específico conforme documentação oficial ML
-    Suporta busca pública e autenticada
-    """
-    url = f"{ML_API_URL}/items/{ml_id}"
-    
-    print(f"🔍 Buscando produto {ml_id}, user_id={user_id}")
-    
-    if user_id:
-        # Tentar busca autenticada primeiro
-        token = MLTokenManager.get_token(user_id)
-        if token:
-
 async def buscar_produtos_ml(query: str, user_id: int = None, limit: int = 20):
     """
     🚨 BUSCA MERCADO LIVRE - API PÚBLICA SEM HEADERS
@@ -273,3 +292,34 @@ async def buscar_avaliacoes_ml(ml_id: str, user_id: int = None):
         # Tentar busca autenticada para mais detalhes
         token = MLTokenManager.get_token(user_id)
         if token:
+            try:
+                print(f"🔐 Tentando busca autenticada de avaliações")
+                async with httpx.AsyncClient() as client:
+                    headers = {"Authorization": f"Bearer {token}"}
+                    resp = await client.get(url, headers=headers, timeout=10.0)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        print(f"✅ Avaliações autenticadas obtidas")
+                        return data.get("reviews", [])
+                    print(f"⚠️ Busca autenticada de avaliações falhou: {resp.status_code}")
+            except Exception as e:
+                print(f"⚠️ Erro na busca autenticada de avaliações: {e}")
+    
+    # Busca pública de avaliações
+    print(f"🌐 Fazendo busca pública de avaliações")
+    try:
+        import requests
+        # Endpoint de reviews pode ser público
+        resp = requests.get(url)
+        print(f"📊 Status avaliações públicas: {resp.status_code}")
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            print(f"✅ Avaliações públicas obtidas")
+            return data.get("reviews", [])
+        else:
+            print(f"❌ Busca pública de avaliações falhou: {resp.status_code}")
+            return []
+    except Exception as e:
+        print(f"❌ Erro na busca pública de avaliações: {e}")
+        return []
