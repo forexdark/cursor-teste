@@ -13,7 +13,7 @@ from auth import create_access_token, get_current_user, google_oauth_login
 from passlib.context import CryptContext
 from datetime import datetime
 from mercadolivre import (
-    buscar_produto_ml, buscar_avaliacoes_ml, buscar_produtos_ml,
+    buscar_produto_ml, buscar_avaliacoes_ml, buscar_produtos_ml, MLTokenManager,
     get_ml_auth_url, exchange_code_for_token, MLTokenManager
 )
 import asyncio
@@ -176,6 +176,8 @@ async def get_me(current_user: Usuario = Depends(get_current_user)):
 # --- PRODUTOS MONITORADOS ---
 @router.post("/produtos/", response_model=ProdutoMonitoradoOut)
 async def adicionar_produto(produto: ProdutoMonitoradoCreate, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    print(f"➕ Adicionando produto para user {current_user.id}: {produto.ml_id}")
+    
     db_produto = ProdutoMonitorado(
         usuario_id=current_user.id,
         ml_id=produto.ml_id,
@@ -188,10 +190,14 @@ async def adicionar_produto(produto: ProdutoMonitoradoCreate, db: Session = Depe
     db.add(db_produto)
     db.commit()
     db.refresh(db_produto)
+    
+    print(f"✅ Produto adicionado: ID {db_produto.id}")
     return db_produto
 
 @router.get("/produtos/", response_model=List[ProdutoMonitoradoOut])
 async def listar_produtos(db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    print(f"📋 Listando produtos para user {current_user.id}")
+    
     produtos = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.usuario_id == current_user.id).all()
     return produtos
 
@@ -199,7 +205,9 @@ async def listar_produtos(db: Session = Depends(get_db), current_user: Usuario =
 async def remover_produto(produto_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
     produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
     if not produto:
+        print(f"❌ Produto {produto_id} não encontrado para user {current_user.id}")
         raise HTTPException(status_code=404, detail="Produto não encontrado")
+    print(f"🗑️ Removendo produto {produto_id} para user {current_user.id}")
     db.delete(produto)
     db.commit()
     return
@@ -209,6 +217,8 @@ async def atualizar_produto(produto_id: int, produto: ProdutoMonitoradoCreate, d
     db_produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
     if not db_produto:
         raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    print(f"📝 Atualizando produto {produto_id} para user {current_user.id}")
     db_produto.ml_id = produto.ml_id
     db_produto.nome = produto.nome
     db_produto.url = produto.url
@@ -218,21 +228,35 @@ async def atualizar_produto(produto_id: int, produto: ProdutoMonitoradoCreate, d
 
 @router.put("/produtos/{produto_id}/atualizar", response_model=ProdutoMonitoradoOut)
 async def atualizar_produto_ml(produto_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    """
+    🔐 ATUALIZAR PRODUTO COM ML - SEMPRE AUTENTICADO
+    
+    Esta função busca dados atualizados do produto diretamente do ML
+    usando o token OAuth do usuário autenticado.
+    """
     produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
     if not produto:
+        print(f"❌ Produto {produto_id} não encontrado para atualização: user {current_user.id}")
         raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    print(f"🔄 Atualizando dados ML do produto {produto_id} (ML_ID: {produto.ml_id}) para user {current_user.id}")
     
     # Buscar dados do Mercado Livre com autenticação do usuário
     dados_ml = await buscar_produto_ml(produto.ml_id, current_user.id)
     if not dados_ml:
         raise HTTPException(status_code=404, detail="Produto não encontrado na API do Mercado Livre")
     
+    print(f"✅ Dados ML obtidos: {dados_ml.get('nome', 'N/A')[:50]}... - R$ {dados_ml.get('preco', 0)}")
+    
+    # Atualizar produto no banco
     produto.nome = dados_ml["nome"]
     produto.preco_atual = dados_ml["preco"]
     produto.estoque_atual = dados_ml["estoque"]
     produto.url = dados_ml["url"]
     db.commit()
     db.refresh(produto)
+    
+    print(f"💾 Produto {produto_id} atualizado no banco")
     return produto
 
 # --- BUSCA DE PRODUTOS - VERSÃO ROBUSTA ---

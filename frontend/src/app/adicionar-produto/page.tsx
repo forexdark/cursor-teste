@@ -215,7 +215,7 @@ export default function AdicionarProduto() {
           
           // Verificar se é erro de autorização
           if (data.action_required === 'oauth_authorization') {
-            setError("⚠️ Autorização do Mercado Livre necessária! Clique em 'Autorizar ML' acima para buscar produtos reais.");
+            setError("🔐 Autorização OAuth obrigatória! A partir de 2025, toda busca no ML exige autorização. Clique em 'Autorizar ML' acima.");
           } else if (data.action_required === 'check_authorization') {
             setError("⚠️ Erro na sua autorização do Mercado Livre. Tente revogar e autorizar novamente.");
           } else {
@@ -227,6 +227,10 @@ export default function AdicionarProduto() {
             if (data.message) {
               detailedError += ` - ${data.message}`;
             }
+            if (data.authenticated === false) {
+              detailedError = "🔐 Busca não autenticada. Token OAuth necessário para acessar dados do ML.";
+            }
+            
             setError(detailedError);
           }
           setSugestoes([]);
