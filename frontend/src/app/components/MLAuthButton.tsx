@@ -147,9 +147,29 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
           }
           
           // Monitorar fechamento do popup
+          // Escutar mensagens do popup
+          const handleMessage = (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) return;
+            
+            if (event.data.type === 'ML_AUTH_SUCCESS') {
+              setDebugInfo("✅ Autorização ML bem-sucedida via postMessage");
+              setAuthStatus('authorized');
+              setError(null);
+              if (onAuthSuccess) onAuthSuccess();
+              
+              // Limpar listeners
+              window.removeEventListener('message', handleMessage);
+              clearInterval(checkClosed);
+            }
+          };
+          
+          window.addEventListener('message', handleMessage);
+          
+          // Fallback: monitorar fechamento do popup
           const checkClosed = setInterval(() => {
             if (popup.closed) {
               clearInterval(checkClosed);
+              window.removeEventListener('message', handleMessage);
               setDebugInfo("🔄 Popup fechado, verificando status...");
               // Aguardar um pouco e verificar status
               setTimeout(() => {
@@ -164,6 +184,7 @@ export default function MLAuthButton({ onAuthSuccess, compact = false }: MLAuthB
             if (popup && !popup.closed) {
               popup.close();
               clearInterval(checkClosed);
+              window.removeEventListener('message', handleMessage);
               setDebugInfo("⏰ Popup fechado por timeout");
             }
           }, 300000); // 5 minutos
