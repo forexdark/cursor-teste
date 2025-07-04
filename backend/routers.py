@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 from models import (
@@ -21,6 +22,15 @@ import httpx
 from pydantic import BaseModel
 
 router = APIRouter()
+
+# Headers CORS explícitos para todas as respostas
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Credentials": "true"
+}
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Modelos para resposta

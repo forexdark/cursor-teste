@@ -28,10 +28,11 @@ app = FastAPI(
 
 # Configurar CORS
 origins = [
-    os.getenv("FRONTEND_URL", "https://vigia-meli.vercel.app"),
-    "http://localhost:3000",
     "https://vigia-meli.vercel.app",
-    "https://*.vercel.app"
+    "http://localhost:3000",
+    "https://localhost:3000",
+    "https://*.vercel.app",
+    "*"  # Temporário para debug
 ]
 
 app.add_middleware(
@@ -40,7 +41,6 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
 
 # Event handlers
 @app.on_event("startup")
@@ -131,7 +131,7 @@ def root():
     }
 
 @app.get("/health")
-def health():
+async def health():
     """Endpoint de verificação de saúde"""
     try:
         # Verificar conexão com banco (se disponível)
@@ -142,14 +142,22 @@ def health():
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "version": "1.0.0",
             "database": database_status,
-            "environment": os.getenv("RAILWAY_ENVIRONMENT", "development")
+            "environment": os.getenv("RAILWAY_ENVIRONMENT", "development"),
+            "cors": "enabled"
         }
     except Exception as e:
         logger.error(f"Erro no health check: {e}")
-        return JSONResponse(
+        response = JSONResponse(
             status_code=503,
             content={"status": "error", "message": str(e)}
         )
+        # Adicionar headers CORS mesmo em erro
+        response.headers.update({
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization"
+        })
+        return response
 
 # Endpoint de diagnóstico
 @app.get("/debug/info")
