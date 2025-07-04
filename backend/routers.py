@@ -20,6 +20,7 @@ from openai_utils import gerar_resumo_avaliacoes
 import httpx
 from pydantic import BaseModel
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +143,107 @@ async def login_google(token_id: str, db: Session = Depends(get_db_safe)):
     # Implementar integração real com Google
     return google_oauth_login(token_id, db)
 
+# --- AUTENTICAÇÃO MERCADO LIVRE ---
+@router.get("/auth/mercadolivre/status")
+async def mercadolivre_auth_status(current_user: Usuario = Depends(get_current_user)):
+    """Verificar status da autorização do Mercado Livre"""
+    try:
+        # Verificar se credenciais ML estão configuradas
+        ml_client_id = os.getenv("ML_CLIENT_ID")
+        ml_client_secret = os.getenv("ML_CLIENT_SECRET")
+        
+        if not ml_client_id or not ml_client_secret:
+            return {
+                "authorized": False,
+                "message": "Mercado Livre não configurado no servidor",
+                "error": "missing_credentials"
+            }
+        
+        # Verificar se usuário tem token válido
+        token = MLTokenManager.get_token(current_user.id)
+        return {
+            "authorized": token is not None,
+            "message": "Autorizado" if token else "Não autorizado",
+            "ml_configured": True
+        }
+    except Exception as e:
+        logger.error(f"Erro ao verificar status ML: {e}")
+        return {
+            "authorized": False,
+            "message": "Erro ao verificar status",
+            "error": str(e)
+        }
+
+@router.get("/auth/mercadolivre/url", response_model=MLAuthResponse)
+async def get_mercadolivre_auth_url(current_user: Usuario = Depends(get_current_user)):
+    """Gera URL de autorização do Mercado Livre para o usuário"""
+    try:
+        # Verificar se credenciais estão configuradas
+        ml_client_id = os.getenv("ML_CLIENT_ID")
+        ml_client_secret = os.getenv("ML_CLIENT_SECRET")
+        
+        if not ml_client_id or not ml_client_secret:
+            return MLAuthResponse(
+                success=False,
+                message="Mercado Livre não configurado no servidor. Configure ML_CLIENT_ID e ML_CLIENT_SECRET."
+            )
+        
+        # Gerar estado único para o usuário
+        state = f"user_{current_user.id}_{datetime.now().timestamp()}"
+        auth_url = get_ml_auth_url(state)
+        
+        return MLAuthResponse(
+            success=True,
+            auth_url=auth_url,
+            message="URL de autorização gerada com sucesso"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao gerar URL ML: {e}")
+        return MLAuthResponse(
+            success=False,
+            message=f"Erro ao gerar URL de autorização: {str(e)}"
+        )
+
+@router.post("/auth/mercadolivre/callback")
+async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario = Depends(get_current_user)):
+    """Processa callback do OAuth do Mercado Livre"""
+    try:
+        # Verificar se credenciais estão configuradas
+        ml_client_id = os.getenv("ML_CLIENT_ID")
+        ml_client_secret = os.getenv("ML_CLIENT_SECRET")
+        
+        if not ml_client_id or not ml_client_secret:
+            raise HTTPException(
+                status_code=503, 
+                detail="Mercado Livre não configurado no servidor"
+            )
+        
+        # Trocar código por token
+        token_data = await exchange_code_for_token(auth_data.code)
+        
+        # Salvar token para o usuário
+        MLTokenManager.save_token(current_user.id, token_data)
+        
+        return {
+            "success": True,
+            "message": "Autorização do Mercado Livre concluída com sucesso",
+            "user_id": token_data.get("user_id"),
+            "scope": token_data.get("scope")
+        }
+    except Exception as e:
+        logger.error(f"Erro no callback ML: {e}")
+        raise HTTPException(status_code=400, detail=f"Erro no callback OAuth: {str(e)}")
+
+@router.delete("/auth/mercadolivre/revoke")
+async def revoke_mercadolivre_auth(current_user: Usuario = Depends(get_current_user)):
+    """Revoga autorização do Mercado Livre para o usuário"""
+    try:
+        MLTokenManager.revoke_token(current_user.id)
+        return {"success": True, "message": "Autorização do Mercado Livre revogada"}
+    except Exception as e:
+        logger.error(f"Erro ao revogar ML: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao revogar autorização")
+
 # --- PRODUTOS MONITORADOS ---
 @router.post("/produtos/", response_model=ProdutoMonitoradoOut)
 async def adicionar_produto(produto: ProdutoMonitoradoCreate, db: Session = Depends(get_db_safe), current_user: Usuario = Depends(get_current_user)):
@@ -207,6 +309,17 @@ async def test_health():
 async def test_mercadolivre():
     """Testar conectividade com a API do Mercado Livre"""
     try:
+        # Verificar se credenciais estão configuradas
+        ml_client_id = os.getenv("ML_CLIENT_ID")
+        ml_client_secret = os.getenv("ML_CLIENT_SECRET")
+        
+        config_status = {
+            "ml_client_id_configured": bool(ml_client_id),
+            "ml_client_secret_configured": bool(ml_client_secret),
+            "ml_client_id_preview": ml_client_id[:10] + "..." if ml_client_id else None
+        }
+        
+        # Teste básico da API pública do Mercado Livre
         async with httpx.AsyncClient() as client:
             response = await client.get("https://api.mercadolibre.com/sites/MLB/search?q=teste&limit=1")
         
@@ -216,21 +329,23 @@ async def test_mercadolivre():
                 success=True,
                 message="Conexão com Mercado Livre OK",
                 data={
+                    "api_status": "online",
                     "total_results": data.get("paging", {}).get("total", 0),
-                    "sample_product": data.get("results", [{}])[0].get("title", "Nenhum produto") if data.get("results") else "Nenhum resultado"
+                    "sample_product": data.get("results", [{}])[0].get("title", "Nenhum produto") if data.get("results") else "Nenhum resultado",
+                    "config": config_status
                 }
             )
         else:
             return MLTestResponse(
                 success=False,
-                message=f"Erro HTTP {response.status_code}",
-                data={}
+                message=f"API Mercado Livre retornou HTTP {response.status_code}",
+                data={"config": config_status}
             )
     except Exception as e:
         return MLTestResponse(
             success=False,
             message=f"Erro ao conectar: {str(e)}",
-            data={}
+            data={"config": config_status if 'config_status' in locals() else {}}
         )
 
 @router.get("/test/database")
@@ -252,3 +367,21 @@ async def test_database_router():
             "message": f"Erro no teste: {str(e)}",
             "timestamp": datetime.utcnow()
         }
+
+@router.get("/test/ml-config")
+async def test_ml_config():
+    """Testar configuração do Mercado Livre"""
+    ml_client_id = os.getenv("ML_CLIENT_ID")
+    ml_client_secret = os.getenv("ML_CLIENT_SECRET")
+    
+    return {
+        "ml_client_id_configured": bool(ml_client_id),
+        "ml_client_secret_configured": bool(ml_client_secret),
+        "ml_client_id_preview": ml_client_id[:15] + "..." if ml_client_id else None,
+        "ready_for_oauth": bool(ml_client_id and ml_client_secret),
+        "next_steps": [
+            "Configure ML_CLIENT_ID no Railway" if not ml_client_id else "✅ ML_CLIENT_ID configurado",
+            "Configure ML_CLIENT_SECRET no Railway" if not ml_client_secret else "✅ ML_CLIENT_SECRET configurado",
+            "Registre aplicação no Mercado Livre Developers" if not (ml_client_id and ml_client_secret) else "✅ Configuração completa"
+        ]
+    }
