@@ -32,17 +32,17 @@ origins = [
     "http://localhost:3000",
     "https://vigia-meli.vercel.app",
     "https://*.vercel.app",
-    "http://127.0.0.1:3000",
-    "*"
+    "*"  # Permitir todas as origens temporariamente
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],  # Permitir todas as origens
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
+    expose_headers=["*"],
+    max_age=600
 )
 
 # Event handlers
