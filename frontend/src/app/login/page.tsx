@@ -55,7 +55,9 @@ export default function Login() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              "Accept": "application/json",
             },
+            mode: 'cors',
             body: JSON.stringify({
               email: formData.email,
               senha: formData.password, 

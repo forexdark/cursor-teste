@@ -63,13 +63,14 @@ async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     
     db.add(db_usuario)
     try:
+        db.flush()  # Forçar flush antes do commit
         db.commit()
         db.refresh(db_usuario)
         print(f"✅ DEBUG: Usuário criado com sucesso: ID {db_usuario.id}")
     except Exception as e:
         print(f"❌ DEBUG: Erro ao criar usuário: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail="Erro interno do servidor")
+        raise HTTPException(status_code=500, detail=f"Erro interno do servidor: {str(e)}")
     
     return db_usuario
 

@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import uvicorn
 from datetime import datetime, timezone
 import logging
+from cors_middleware import CustomCORSMiddleware
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -44,6 +45,9 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=600
 )
+
+# Adicionar middleware CORS personalizado como backup
+app.add_middleware(CustomCORSMiddleware)
 
 # Event handlers
 @app.on_event("startup")
