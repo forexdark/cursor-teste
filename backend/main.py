@@ -30,7 +30,6 @@ app = FastAPI(
 origins = [
     "https://vigia-meli.vercel.app",
     "http://localhost:3000",
-    "https://localhost:3000"
 ]
 
 app.add_middleware(
@@ -39,6 +38,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600
 )
 
 # Event handlers
@@ -129,19 +130,6 @@ def root():
         "health": "/health"
     }
 
-# Adicionar handler OPTIONS global para CORS preflight
-@app.options("/{full_path:path}")
-async def options_handler(request):
-    return JSONResponse(
-        content={},
-        headers={
-            "Access-Control-Allow-Origin": "https://vigia-meli.vercel.app",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            "Access-Control-Allow-Credentials": "true"
-        }
-    )
-
 @app.get("/health")
 async def health():
     """Endpoint de verificação de saúde"""
@@ -155,19 +143,13 @@ async def health():
             "version": "1.0.0",
             "database": database_status,
             "environment": os.getenv("RAILWAY_ENVIRONMENT", "development"),
-            "cors": "enabled",
-            "origins": origins
+            "cors_origins": origins
         }
     except Exception as e:
         logger.error(f"Erro no health check: {e}")
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "message": str(e)},
-            headers={
-                "Access-Control-Allow-Origin": "https://vigia-meli.vercel.app",
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization"
-            }
+            content={"status": "error", "message": str(e)}
         )
 
 # Endpoint de diagnóstico
