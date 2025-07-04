@@ -383,10 +383,11 @@ async def search_produtos_ml(query: str, current_user: Usuario = Depends(get_cur
             print(f"❌ Busca ML falhou para user {current_user.id}")
             return {
                 "success": False,
-                "error": "Erro na busca do Mercado Livre",
-                "message": "Não foi possível buscar produtos. Verifique sua autorização.",
+                "error": "Erro na busca autenticada do Mercado Livre",
+                "message": "Token OAuth inválido ou expirado. Clique em 'Revogar Autorização' e autorize novamente.",
                 "action_required": "check_authorization",
-                "user_id": current_user.id
+                "user_id": current_user.id,
+                "documentation": "https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao"
             }
             
     except Exception as e:
