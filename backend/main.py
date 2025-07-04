@@ -93,8 +93,10 @@ async def startup_event():
 # Importar e incluir rotas (com tratamento de erro)
 try:
     from routers import router
+    from mercadolivre import ML_API_URL  # Importar para verificação
     app.include_router(router)
     logger.info("✅ Rotas carregadas com sucesso")
+    logger.info(f"🔗 ML API URL configurada: {ML_API_URL}")
 except ImportError as e:
     logger.error(f"❌ Erro ao importar rotas: {e}")
     # Criar rotas básicas como fallback

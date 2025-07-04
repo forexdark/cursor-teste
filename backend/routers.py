@@ -189,11 +189,32 @@ async def mercadolivre_auth_status(current_user: Usuario = Depends(get_current_u
     """Verifica status da autorização OAuth 2.0 + PKCE do Mercado Livre"""
     compliance = validate_ml_oauth_compliance(current_user.id)
     
+    # Verificar se token ainda é válido fazendo uma chamada simples
+    token_valid = False
+    if compliance["compliant"]:
+        token = MLTokenManager.get_token(current_user.id)
+        if token:
+            try:
+                # Fazer uma chamada simples para verificar se token funciona
+                import httpx
+                async with httpx.AsyncClient() as client:
+                    test_response = await client.get(
+                        f"{ML_API_URL}/users/me",
+                        headers={"Authorization": f"Bearer {token}"},
+                        timeout=10.0
+                    )
+                    token_valid = test_response.status_code == 200
+                    print(f"🧪 [ML 2025] Teste token para user {current_user.id}: status {test_response.status_code}")
+            except Exception as e:
+                print(f"🧪 [ML 2025] Erro no teste de token: {e}")
+                token_valid = False
+    
     return {
-        "authorized": compliance["compliant"],
+        "authorized": compliance["compliant"] and token_valid,
         "oauth_version": "2.0_PKCE_2025" if compliance["compliant"] else None,
-        "message": "✅ OAuth 2.0 + PKCE ativo" if compliance["compliant"] else "❌ Autorização OAuth 2.0 necessária",
+        "message": "✅ OAuth 2.0 + PKCE ativo" if (compliance["compliant"] and token_valid) else "❌ Autorização OAuth 2.0 necessária",
         "compliance": compliance,
+        "token_valid": token_valid,
         "documentation": "https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao"
     }
 
@@ -383,11 +404,10 @@ async def search_produtos_ml(query: str, current_user: Usuario = Depends(get_cur
             print(f"❌ Busca ML falhou para user {current_user.id}")
             return {
                 "success": False,
-                "error": "Erro na busca autenticada do Mercado Livre",
-                "message": "Token OAuth inválido ou expirado. Clique em 'Revogar Autorização' e autorize novamente.",
+                "error": "Erro na busca do Mercado Livre",
+                "message": "Não foi possível buscar produtos. Verifique sua autorização.",
                 "action_required": "check_authorization",
-                "user_id": current_user.id,
-                "documentation": "https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao"
+                "user_id": current_user.id
             }
             
     except Exception as e:

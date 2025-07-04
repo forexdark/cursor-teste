@@ -211,13 +211,13 @@ export default function AdicionarProduto() {
         // Verificar se a busca foi bem-sucedida
         if (!data.success) {
           const errorMsg = data.error || data.message || "Erro na busca autenticada";
-          console.warn(`⚠️ Busca não bem-sucedida: ${errorMsg}`);
+          console.warn(`⚠️ [ML 2025] Busca não bem-sucedida: ${errorMsg}`);
           
           // Verificar se é erro de autorização
           if (data.action_required === 'oauth_authorization') {
-            setError("🔐 OAuth 2.0 + PKCE obrigatório! Conforme documentação oficial ML 2025, toda busca exige autorização. Clique em 'Autorizar ML' acima.");
+            setError("🔐 OAuth 2.0 + PKCE obrigatório! Conforme documentação oficial ML 2025, toda busca exige autorização. Clique em 'Autorizar Mercado Livre' acima.");
           } else if (data.action_required === 'check_authorization') {
-            setError("⚠️ Token OAuth inválido/expirado. Tente revogar e autorizar novamente conforme padrão ML 2025.");
+            setError("⚠️ Token OAuth inválido/expirado. Clique em 'Revogar Autorização' e autorize novamente conforme padrão ML 2025.");
           } else {
             // Mostrar erro detalhado para outros casos
             let detailedError = errorMsg;
