@@ -1,7 +1,7 @@
 import os
 import sys
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -26,75 +26,37 @@ app = FastAPI(
     description="API para monitoramento de preços do Mercado Livre"
 )
 
-# Configurar CORS - VERSÃO CORRIGIDA
-frontend_urls = [
+# Configurar CORS CORRETAMENTE - seguindo as sugestões
+origins = [
     "https://vigia-meli.vercel.app",
-    "https://*.vercel.app", 
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    os.getenv("FRONTEND_URL", "https://vigia-meli.vercel.app"),
+    # Adicionar URL do frontend se existir na env
+    os.getenv("FRONTEND_URL", "").strip(),
 ]
 
 # Remover URLs vazias e duplicadas
-origins = list(set([url for url in frontend_urls if url]))
+origins = list(set([url for url in origins if url]))
 
 logger.info(f"🌐 CORS Origins configuradas: {origins}")
 
+# USAR APENAS O CORSMiddleware OFICIAL (não usar "*" com credentials=True)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permitir todas as origens temporariamente para debug
+    allow_origins=origins,             # só domínios específicos
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
-    max_age=86400,  # 24 horas
+    max_age=600
 )
-
-# Middleware adicional para debug CORS
-@app.middleware("http")
-async def cors_debug_middleware(request: Request, call_next):
-    origin = request.headers.get("origin")
-    method = request.method
-    path = request.url.path
-    
-    logger.info(f"🔍 Request: {method} {path} from origin: {origin}")
-    
-    # Processar requisição
-    response = await call_next(request)
-    
-    # Headers CORS adicionais
-    if origin:
-        response.headers["Access-Control-Allow-Origin"] = origin
-    else:
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With"
-    response.headers["Access-Control-Allow-Credentials"] = "true"
-    
-    logger.info(f"✅ Response: {response.status_code} with CORS headers")
-    return response
-
-# Options handler para preflight
-@app.options("/{path:path}")
-async def options_handler(request: Request):
-    """Handler para requisições OPTIONS (preflight CORS)"""
-    return JSONResponse(
-        content={},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, X-Requested-With",
-            "Access-Control-Max-Age": "86400",
-        }
-    )
 
 # Event handlers
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 VigIA Backend iniciando...")
     logger.info(f"📅 Timestamp: {datetime.now(timezone.utc)}")
-    logger.info(f"🌐 Frontend URL: {os.getenv('FRONTEND_URL', 'http://localhost:3000')}")
+    logger.info(f"🌐 CORS Origins: {origins}")
     
     # Verificar variáveis essenciais
     database_url = os.getenv('DATABASE_URL')
@@ -121,7 +83,7 @@ except ImportError as e:
             "error": "Algumas rotas podem não estar disponíveis"
         }
 
-# Exception handlers aprimorados
+# Exception handlers
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
     logger.warning(f"❌ 404 - Endpoint não encontrado: {request.url}")
@@ -139,11 +101,6 @@ async def not_found_handler(request, exc):
                 "GET /test/mercadolivre",
                 "GET /docs"
             ]
-        },
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
         }
     )
 
@@ -156,11 +113,6 @@ async def method_not_allowed_handler(request, exc):
             "detail": f"Método {request.method} não permitido para este endpoint",
             "url": str(request.url),
             "tip": "Verifique se está usando POST para login/register e GET para busca"
-        },
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
         }
     )
 
@@ -171,13 +123,7 @@ async def internal_error_handler(request, exc):
         status_code=500,
         content={
             "detail": "Erro interno do servidor",
-            "message": "Tente novamente em alguns momentos",
-            "error": str(exc) if os.getenv("DEBUG") else None
-        },
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "message": "Tente novamente em alguns momentos"
         }
     )
 
@@ -191,7 +137,7 @@ def root():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "docs": "/docs",
         "health": "/health",
-        "cors": "enabled"
+        "cors": "configured"
     }
 
 @app.get("/health")
@@ -207,30 +153,25 @@ def health():
             "version": "1.0.0",
             "database": database_status,
             "environment": os.getenv("RAILWAY_ENVIRONMENT", "development"),
-            "cors": "enabled"
+            "cors_origins": origins
         }
     except Exception as e:
         logger.error(f"Erro no health check: {e}")
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "message": str(e)},
-            headers={
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            }
+            content={"status": "error", "message": str(e)}
         )
 
-# Endpoint de diagnóstico CORS
+# Endpoint de teste CORS
 @app.get("/test/cors")
 def test_cors():
     """Endpoint para testar CORS"""
     return {
         "cors": "working",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "origin_allowed": True,
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "headers": ["Content-Type", "Authorization", "Accept"]
+        "allowed_origins": origins,
+        "credentials": True,
+        "message": "CORS configurado corretamente"
     }
 
 # Endpoint de diagnóstico
