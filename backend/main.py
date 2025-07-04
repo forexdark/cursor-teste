@@ -9,13 +9,7 @@ import uvicorn
 from datetime import datetime, timezone
 import logging
 
-# Verificar se todas as variáveis críticas estão configuradas
-required_vars = ["DATABASE_URL"]
-missing_vars = [var for var in required_vars if not os.getenv(var)]
-if missing_vars:
-    print(f"❌ Variáveis obrigatórias faltando: {missing_vars}")
-
-# Carregar variáveis de ambiente
+# Carregar variáveis de ambiente primeiro
 load_dotenv()
 
 # Configurar logging
@@ -32,24 +26,22 @@ app = FastAPI(
     description="API para monitoramento de preços do Mercado Livre"
 )
 
-# Configurar CORS CORRETAMENTE - seguindo as sugestões
+# Configurar CORS CORRETAMENTE
 origins = [
     "https://vigia-meli.vercel.app",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    # Adicionar URL do frontend se existir na env
     os.getenv("FRONTEND_URL", "").strip(),
 ]
 
 # Remover URLs vazias e duplicadas
 origins = list(set([url for url in origins if url]))
 
-logger.info(f"🌐 CORS Origins configuradas: {origins}")
+logger.info(f"🌐 CORS Origins: {origins}")
 
-# USAR APENAS O CORSMiddleware OFICIAL (não usar "*" com credentials=True)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,             # só domínios específicos
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -64,75 +56,63 @@ async def startup_event():
     logger.info(f"📅 Timestamp: {datetime.now(timezone.utc)}")
     logger.info(f"🌐 CORS Origins: {origins}")
     
-    # Verificar variáveis essenciais
-    database_url = os.getenv('DATABASE_URL')
+    # Verificar e configurar banco de dados
+    try:
+        from database import get_database_status, create_tables
+        db_status = get_database_status()
+        
+        logger.info(f"🗄️ Database Status:")
+        logger.info(f"  - Configurado: {'✅' if db_status['configured'] else '❌'}")
+        logger.info(f"  - Engine: {'✅' if db_status['engine_created'] else '❌'}")
+        logger.info(f"  - Conexão: {'✅' if db_status['connection_test'] else '❌'}")
+        logger.info(f"  - Tabelas: {'✅' if db_status['tables_created'] else '❌'}")
+        logger.info(f"  - Tipo: {db_status['database_type']}")
+        
+        if not db_status['configured']:
+            logger.warning("⚠️ DATABASE_URL não configurada")
+            logger.info("💡 Para usar PostgreSQL do Railway:")
+            logger.info("   1. Adicione PostgreSQL plugin no Railway")
+            logger.info("   2. Use a DATABASE_URL gerada automaticamente")
+        
+    except Exception as e:
+        logger.error(f"❌ Erro na inicialização do banco: {e}")
+    
+    # Verificar outras variáveis
     ml_client_id = os.getenv('ML_CLIENT_ID')
-    
-    logger.info(f"🗄️ Database: {'✅ Configurado' if database_url else '❌ NÃO CONFIGURADO'}")
     logger.info(f"🛒 ML Client: {'✅ Configurado' if ml_client_id else '❌ NÃO CONFIGURADO'}")
-    
-    if not database_url:
-        logger.warning("⚠️ DATABASE_URL não configurada - algumas funcionalidades podem não funcionar")
-    
-    # Testar conexão com banco
-    if database_url:
-        try:
-            from database import test_database_connection
-            if test_database_connection():
-                logger.info("✅ Conexão com banco de dados testada com sucesso")
-            else:
-                logger.error("❌ Falha no teste de conexão com banco")
-        except Exception as e:
-            logger.error(f"❌ Erro ao testar banco: {e}")
 
-# Importar e incluir rotas (com tratamento de erro)
+# Importar e incluir rotas com tratamento de erro
 try:
     from routers import router
     app.include_router(router)
     logger.info("✅ Rotas carregadas com sucesso")
 except ImportError as e:
     logger.error(f"❌ Erro ao importar rotas: {e}")
+    
     # Criar rotas básicas como fallback
-    @app.get("/")
-    def root_fallback():
+    @app.get("/fallback")
+    def fallback_route():
         return {
-            "message": "VigIA Backend rodando! 🚀",
-            "error": "Algumas rotas podem não estar disponíveis"
+            "message": "VigIA Backend rodando em modo limitado",
+            "error": "Algumas funcionalidades podem não estar disponíveis",
+            "status": "partial"
         }
 
-# Exception handlers
+# Exception handlers melhorados
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
-    logger.warning(f"❌ 404 - Endpoint não encontrado: {request.url}")
     return JSONResponse(
         status_code=404,
         content={
             "detail": "Endpoint não encontrado",
             "url": str(request.url),
             "method": request.method,
-            "tip": "Verifique se a URL está correta",
             "available_endpoints": [
                 "GET /",
-                "GET /health",
-                "GET /test/cors",
-                "POST /auth/register", 
-                "POST /auth/login",
-                "GET /test/mercadolivre",
+                "GET /health", 
+                "GET /test/database",
                 "GET /docs"
             ]
-        }
-    )
-
-@app.exception_handler(405)
-async def method_not_allowed_handler(request, exc):
-    logger.warning(f"❌ 405 - Método não permitido: {request.method} {request.url}")
-    return JSONResponse(
-        status_code=405,
-        content={
-            "detail": f"Método {request.method} não permitido para este endpoint",
-            "url": str(request.url),
-            "allowed_methods": "POST" if "auth" in str(request.url) else "GET",
-            "tip": "Verifique se está usando POST para login/register e GET para busca"
         }
     )
 
@@ -143,112 +123,94 @@ async def internal_error_handler(request, exc):
         status_code=500,
         content={
             "detail": "Erro interno do servidor",
-            "message": "Tente novamente em alguns momentos"
+            "message": "Tente novamente em alguns momentos",
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     )
 
-# Rotas básicas
+# Rotas básicas sempre disponíveis
 @app.get("/")
 def root():
     return {
         "message": "VigIA Backend rodando! 🚀",
-        "version": "1.0.0",
+        "version": "1.0.0", 
         "status": "online",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "docs": "/docs",
-        "health": "/health",
-        "cors": "configured"
+        "health": "/health"
     }
 
 @app.get("/health")
 def health():
-    """Endpoint de verificação de saúde"""
+    """Health check com verificação completa"""
     try:
-        # Verificar conexão com banco
-        database_status = "not_configured"
-        if os.getenv('DATABASE_URL'):
-            try:
-                from database import test_database_connection
-                database_status = "ok" if test_database_connection() else "error"
-            except Exception as e:
-                database_status = f"error: {str(e)[:50]}"
-        
-        return {
+        # Status básico
+        health_status = {
             "status": "ok",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "version": "1.0.0",
-            "database": database_status,
-            "environment": os.getenv("RAILWAY_ENVIRONMENT", "development"),
-            "cors_origins": origins
+            "environment": os.getenv("RAILWAY_ENVIRONMENT", "development")
         }
+        
+        # Verificar banco se disponível
+        try:
+            from database import get_database_status
+            db_status = get_database_status()
+            health_status["database"] = db_status
+        except Exception as e:
+            health_status["database"] = {"error": str(e)[:100]}
+        
+        # Se banco estiver com problema, retornar 503
+        if health_status.get("database", {}).get("connection_test") is False:
+            return JSONResponse(
+                status_code=503,
+                content={**health_status, "status": "degraded"}
+            )
+        
+        return health_status
+        
     except Exception as e:
         logger.error(f"Erro no health check: {e}")
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "message": str(e)}
-        )
-
-# Endpoint de teste CORS
-@app.get("/test/cors")
-def test_cors():
-    """Endpoint para testar CORS"""
-    return {
-        "cors": "working",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "allowed_origins": origins,
-        "credentials": True,
-        "message": "CORS configurado corretamente",
-        "frontend_url": os.getenv('FRONTEND_URL', 'not_set')
-    }
-
-# Endpoint de teste de banco
-@app.get("/test/database")
-def test_database():
-    """Endpoint para testar conexão com banco"""
-    try:
-        from database import test_database_connection
-        
-        if test_database_connection():
-            return {
-                "database": "ok",
-                "message": "Conexão com banco funcionando",
+            content={
+                "status": "error", 
+                "message": str(e)[:100],
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
-        else:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "database": "error",
-                    "message": "Falha na conexão com banco",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-            )
+        )
+
+@app.get("/test/database")
+def test_database_endpoint():
+    """Endpoint específico para testar banco"""
+    try:
+        from database import get_database_status, test_database_connection
+        
+        # Status detalhado
+        status = get_database_status()
+        
+        # Teste adicional de conexão
+        connection_ok = test_database_connection()
+        
+        return {
+            "database_configured": status["configured"],
+            "engine_created": status["engine_created"], 
+            "connection_test": connection_ok,
+            "tables_ready": status["tables_created"],
+            "database_type": status["database_type"],
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "message": "✅ Banco funcionando" if connection_ok else "❌ Problema no banco"
+        }
+        
     except Exception as e:
         return JSONResponse(
             status_code=503,
             content={
-                "database": "error",
-                "message": f"Erro no teste de banco: {str(e)}",
+                "error": str(e)[:100],
+                "database_configured": False,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         )
-
-# Endpoint de diagnóstico
-@app.get("/debug/info")
-def debug_info():
-    """Informações de debug (apenas para desenvolvimento)"""
-    return {
-        "python_version": sys.version,
-        "working_directory": os.getcwd(),
-        "database_url_configured": bool(os.getenv('DATABASE_URL')),
-        "environment_vars": {
-            "DATABASE_URL": "✅ Set" if os.getenv('DATABASE_URL') else "❌ Not Set",
-            "ML_CLIENT_ID": "✅ Set" if os.getenv('ML_CLIENT_ID') else "❌ Not Set",
-            "FRONTEND_URL": os.getenv('FRONTEND_URL', 'Not Set'),
-            "PORT": os.getenv('PORT', 'Not Set')
-        },
-        "cors_origins": origins
-    }
 
 # Para execução local
 if __name__ == "__main__":
