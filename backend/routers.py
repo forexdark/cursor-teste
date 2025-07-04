@@ -287,44 +287,64 @@ async def search_products_public(query: str):
 @router.get("/produtos/search/{query}")
 async def search_produtos_ml(query: str):
     """
-    🎯 BUSCA PÚBLICA MERCADO LIVRE - API OFICIAL
-    
-    Implementa busca conforme documentação oficial do Mercado Livre.
-    API pública: sem headers nem configurações extras.
+    Busca simples na API pública do Mercado Livre
+    Implementação direta: requests.get(url) sem headers
     """
     try:
-        print(f"🔍 SEARCH: Iniciando busca para '{query}'")
+        print(f"🔍 Buscando: '{query}'")
         
-        # Usar a função corrigida do mercadolivre.py
-        resultado = await buscar_produtos_ml(query, user_id=None, limit=20)
+        # URL da API pública do Mercado Livre
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}"
+        print(f"📡 URL: {url}")
         
-        if resultado:
-            print(f"✅ Busca bem-sucedida. Produtos encontrados: {len(resultado.get('results', []))}")
+        # Requisição simples sem headers (conforme solicitado)
+        import requests
+        resp = requests.get(url)
+        
+        print(f"📊 Status: {resp.status_code}")
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            results = data.get("results", [])
+            print(f"✅ Encontrados: {len(results)} produtos")
+            
             return {
                 "success": True,
                 "query": query,
-                "total": resultado.get("paging", {}).get("total", 0),
-                "results": resultado.get("results", [])[:15],
-                "search_type": "ml_official_api"
+                "total": data.get("paging", {}).get("total", 0),
+                "results": results[:20],  # Limitar a 20 resultados
+                "search_type": "ml_public"
             }
         else:
-            print(f"❌ Busca retornou None")
+            error_msg = f"Erro {resp.status_code} na API do Mercado Livre"
+            if resp.status_code == 404:
+                error_msg = "Nenhum produto encontrado para este termo"
+            elif resp.status_code >= 500:
+                error_msg = "Mercado Livre temporariamente indisponível"
+            
+            print(f"❌ {error_msg}")
             return {
                 "success": False,
                 "query": query,
-                "error": "Nenhum resultado encontrado ou erro na API",
-                "results": []
+                "error": error_msg,
+                "results": [],
+                "status_code": resp.status_code
             }
         
     except Exception as e:
-        tb = traceback.format_exc()
-        print(f"❌ ERRO na busca: {str(e)}")
-        print(f"📋 TRACEBACK: {tb}")
+        print(f"❌ Erro: {str(e)}")
+        
+        # Mensagem amigável para o usuário
+        error_msg = "Erro de conexão com o Mercado Livre. Tente novamente."
+        if "timeout" in str(e).lower():
+            error_msg = "Busca muito lenta. Tente um termo mais específico."
+        elif "connection" in str(e).lower():
+            error_msg = "Sem conexão com a internet. Verifique sua rede."
         
         return {
             "success": False,
             "query": query,
-            "error": str(e),
+            "error": error_msg,
             "results": []
         }
 
