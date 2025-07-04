@@ -18,7 +18,7 @@ pkce_store = {}
 
 class MLTokenManager:
     @staticmethod
-    def store_token(user_id: int, token_data: dict):
+    def save_token(user_id: int, token_data: dict):
         """Armazena o token OAuth do usuário"""
         expires_in = token_data.get("expires_in", 3600)
         expires_at = datetime.now() + timedelta(seconds=expires_in)
