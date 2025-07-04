@@ -19,7 +19,11 @@ pkce_store = {}
 class MLTokenManager:
     @staticmethod
     def save_token(user_id: int, token_data: dict):
-        """Armazena o token OAuth do usuário"""
+        """
+        Armazena o token OAuth do usuário
+        Salva no dicionário global ml_tokens
+        """
+        global ml_tokens
         expires_in = token_data.get("expires_in", 3600)
         expires_at = datetime.now() + timedelta(seconds=expires_in)
         
@@ -45,9 +49,14 @@ class MLTokenManager:
     
     @staticmethod
     def get_token(user_id: int) -> Optional[str]:
-        """Recupera o token válido do usuário"""
+        """
+        Recupera o token válido do usuário
+        Busca no dicionário global ml_tokens
+        """
+        global ml_tokens
         print(f"🔍 [ML 2025] Buscando token para user {user_id}")
         print(f"🗂️ [ML 2025] Tokens salvos: {list(ml_tokens.keys())}")
+        print(f"🔍 [ML 2025] ml_tokens object id: {id(ml_tokens)}")
         
         if user_id not in ml_tokens:
             print(f"❌ [ML 2025] Token não encontrado para user {user_id}")
@@ -66,7 +75,11 @@ class MLTokenManager:
     
     @staticmethod
     def refresh_token(user_id: int) -> Optional[str]:
-        """Renova o token OAuth usando refresh_token"""
+        """
+        Renova o token OAuth usando refresh_token
+        Atualiza no dicionário global ml_tokens
+        """
+        global ml_tokens
         if user_id not in ml_tokens:
             print(f"❌ [ML 2025] Token não encontrado para renovação: user {user_id}")
             return None
@@ -110,7 +123,11 @@ class MLTokenManager:
     
     @staticmethod
     def revoke_token(user_id: int):
-        """Remove o token do usuário"""
+        """
+        Remove o token do usuário
+        Remove do dicionário global ml_tokens
+        """
+        global ml_tokens
         if user_id in ml_tokens:
             del ml_tokens[user_id]
             print(f"🗑️ [ML 2025] Token removido para user {user_id}")

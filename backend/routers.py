@@ -14,7 +14,7 @@ from passlib.context import CryptContext
 from datetime import datetime
 from mercadolivre import (
     buscar_produto_ml, buscar_avaliacoes_ml, buscar_produtos_ml, MLTokenManager,
-    get_ml_auth_url, exchange_code_for_token, MLTokenManager, ML_API_URL
+    get_ml_auth_url, exchange_code_for_token, MLTokenManager, ML_API_URL, ml_tokens
 )
 import asyncio
 from openai_utils import gerar_resumo_avaliacoes
@@ -137,6 +137,8 @@ async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario 
     """
     print(f"🔄 [OAUTH 2025] Processando callback ML para user {current_user.id}")
     print(f"📋 Dados recebidos: code={auth_data.code[:10] if auth_data.code else 'NULO'}..., state={auth_data.state}")
+    print(f"🔍 [OAUTH 2025] ml_tokens object id no callback: {id(ml_tokens)}")
+    print(f"🔍 [OAUTH 2025] Tokens antes do save: {list(ml_tokens.keys())}")
     
     try:
         # Trocar código por token
@@ -145,6 +147,9 @@ async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario 
         
         # Salvar token para o usuário
         MLTokenManager.save_token(current_user.id, token_data)
+        
+        print(f"🔍 [OAUTH 2025] Tokens após save: {list(ml_tokens.keys())}")
+        print(f"🔍 [OAUTH 2025] Token salvo confirmado: {current_user.id in ml_tokens}")
         
         # CRÍTICO: Verificar imediatamente se o token funciona
         print(f"🧪 [OAUTH 2025] Testando token recém-salvo para user {current_user.id}")
@@ -253,7 +258,7 @@ async def mercadolivre_auth_status(current_user: Usuario = Depends(get_current_u
         "ml_user_id": ml_user_info.get('id') if ml_user_info else None,
         "debug_info": {
             "user_id": current_user.id,
-            "tokens_available": list(ml_tokens.keys()),
+            "tokens_available": list(ml_tokens.keys()) if 'ml_tokens' in globals() else "ml_tokens_not_available",
             "token_found": current_user.id in ml_tokens
         },
         "documentation": "https://developers.mercadolivre.com.br/pt_br/autenticacao-e-autorizacao"
