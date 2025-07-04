@@ -19,10 +19,6 @@ import asyncio
 from openai_utils import gerar_resumo_avaliacoes
 import httpx
 from pydantic import BaseModel
-import logging
-import os
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -38,157 +34,86 @@ class MLAuthResponse(BaseModel):
     auth_url: str = None
     message: str
 
-# Dependency melhorada para banco
-def get_db_safe():
-    """Dependency que lida graciosamente com banco indisponível"""
-    try:
-        db_gen = get_db()
-        db = next(db_gen)
-        if db is None:
-            raise HTTPException(
-                status_code=503, 
-                detail="Banco de dados temporariamente indisponível"
-            )
-        yield db
-    except Exception as e:
-        logger.error(f"Erro na conexão com banco: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail="Serviço temporariamente indisponível. Tente novamente em alguns momentos."
-        )
-
 # --- AUTENTICAÇÃO ---
 @router.post("/auth/register", response_model=UsuarioOut)
-async def register(usuario: UsuarioCreate, db: Session = Depends(get_db_safe)):
-    logger.info(f"✅ Tentando registrar usuário: {usuario.email}")
+async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
+    print(f"✅ DEBUG: Tentando registrar usuário: {usuario.email}")
     
+    # Verificar se usuário já existe
+    existing_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
+    if existing_user:
+        print(f"❌ DEBUG: Email já existe: {usuario.email}")
+        raise HTTPException(status_code=400, detail="Email já cadastrado")
+    
+    # Hash da senha
+    if not usuario.senha or len(usuario.senha) < 6:
+        raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 6 caracteres")
+        
+    senha_hash = pwd_context.hash(usuario.senha)
+    print(f"🔒 DEBUG: Senha hash gerado: Sim")
+    
+    # Criar usuário
+    db_usuario = Usuario(
+        email=usuario.email, 
+        nome=usuario.nome, 
+        senha_hash=senha_hash,
+        is_active=True,
+        criado_em=datetime.utcnow()
+    )
+    
+    db.add(db_usuario)
     try:
-        # Verificar se usuário já existe
-        existing_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
-        if existing_user:
-            logger.warning(f"❌ Email já existe: {usuario.email}")
-            raise HTTPException(status_code=400, detail="Email já cadastrado")
-        
-        # Validar senha
-        if not usuario.senha or len(usuario.senha) < 6:
-            raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 6 caracteres")
-            
-        # Hash da senha
-        senha_hash = pwd_context.hash(usuario.senha)
-        logger.info(f"🔒 Senha hash gerado para: {usuario.email}")
-        
-        # Criar usuário
-        db_usuario = Usuario(
-            email=usuario.email, 
-            nome=usuario.nome, 
-            senha_hash=senha_hash,
-            is_active=True,
-            criado_em=datetime.utcnow()
-        )
-        
-        db.add(db_usuario)
         db.commit()
         db.refresh(db_usuario)
-        logger.info(f"✅ Usuário criado com sucesso: ID {db_usuario.id}")
-        
-        return db_usuario
-        
-    except HTTPException:
-        db.rollback()
-        raise
+        print(f"✅ DEBUG: Usuário criado com sucesso: ID {db_usuario.id}")
     except Exception as e:
-        logger.error(f"❌ Erro ao criar usuário: {e}")
+        print(f"❌ DEBUG: Erro ao criar usuário: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Erro interno do servidor")
+    
+    return db_usuario
 
 @router.post("/auth/login") 
-async def login(login_data: LoginRequest, db: Session = Depends(get_db_safe)):
-    logger.info(f"🔐 Tentativa de login: {login_data.email}")
+async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
+    print(f"🔐 DEBUG: Tentativa de login: {login_data.email}")
     
-    try:
-        user = db.query(Usuario).filter(Usuario.email == login_data.email).first()
-        if not user:
-            logger.warning(f"❌ Usuário não encontrado: {login_data.email}")
-            raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    user = db.query(Usuario).filter(Usuario.email == login_data.email).first()
+    if not user:
+        print(f"❌ DEBUG: Usuário não encontrado: {login_data.email}")
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    
+    # Verificar senha (se existe hash)
+    if not user.senha_hash:
+        print(f"❌ DEBUG: Usuário {login_data.email} não tem senha configurada")
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
         
-        # Verificar senha
-        if not user.senha_hash:
-            logger.warning(f"❌ Usuário sem senha: {login_data.email}")
-            raise HTTPException(status_code=401, detail="Credenciais inválidas")
-            
-        if not pwd_context.verify(login_data.senha, user.senha_hash):
-            logger.warning(f"❌ Senha incorreta: {login_data.email}")
-            raise HTTPException(status_code=401, detail="Credenciais inválidas")
-        
-        logger.info(f"✅ Login bem-sucedido: {user.email}")
-        
-        access_token = create_access_token(data={"sub": user.email})
-        return {
-            "access_token": access_token, 
-            "token_type": "bearer",
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "nome": user.nome
-            }
+    if not pwd_context.verify(login_data.senha, user.senha_hash):
+        print(f"❌ DEBUG: Senha incorreta para: {login_data.email}")
+        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    
+    print(f"✅ DEBUG: Login bem-sucedido: {user.email}")
+    
+    access_token = create_access_token(data={"sub": user.email})
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "nome": user.nome
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Erro no login: {e}")
-        raise HTTPException(status_code=500, detail="Erro interno do servidor")
+    }
 
 @router.post("/auth/google")
-async def login_google(token_id: str, db: Session = Depends(get_db_safe)):
+async def login_google(token_id: str, db: Session = Depends(get_db)):
     # Implementar integração real com Google
     return google_oauth_login(token_id, db)
 
 # --- AUTENTICAÇÃO MERCADO LIVRE ---
-@router.get("/auth/mercadolivre/status")
-async def mercadolivre_auth_status(current_user: Usuario = Depends(get_current_user)):
-    """Verificar status da autorização do Mercado Livre"""
-    try:
-        # Verificar se credenciais ML estão configuradas
-        ml_client_id = os.getenv("ML_CLIENT_ID")
-        ml_client_secret = os.getenv("ML_CLIENT_SECRET")
-        
-        if not ml_client_id or not ml_client_secret:
-            return {
-                "authorized": False,
-                "message": "Mercado Livre não configurado no servidor",
-                "error": "missing_credentials"
-            }
-        
-        # Verificar se usuário tem token válido
-        token = MLTokenManager.get_token(current_user.id)
-        return {
-            "authorized": token is not None,
-            "message": "Autorizado" if token else "Não autorizado",
-            "ml_configured": True
-        }
-    except Exception as e:
-        logger.error(f"Erro ao verificar status ML: {e}")
-        return {
-            "authorized": False,
-            "message": "Erro ao verificar status",
-            "error": str(e)
-        }
-
 @router.get("/auth/mercadolivre/url", response_model=MLAuthResponse)
 async def get_mercadolivre_auth_url(current_user: Usuario = Depends(get_current_user)):
     """Gera URL de autorização do Mercado Livre para o usuário"""
     try:
-        # Verificar se credenciais estão configuradas
-        ml_client_id = os.getenv("ML_CLIENT_ID")
-        ml_client_secret = os.getenv("ML_CLIENT_SECRET")
-        
-        if not ml_client_id or not ml_client_secret:
-            return MLAuthResponse(
-                success=False,
-                message="Mercado Livre não configurado no servidor. Configure ML_CLIENT_ID e ML_CLIENT_SECRET."
-            )
-        
-        # Gerar estado único para o usuário
         state = f"user_{current_user.id}_{datetime.now().timestamp()}"
         auth_url = get_ml_auth_url(state)
         
@@ -198,35 +123,17 @@ async def get_mercadolivre_auth_url(current_user: Usuario = Depends(get_current_
             message="URL de autorização gerada com sucesso"
         )
     except Exception as e:
-        logger.error(f"Erro ao gerar URL ML: {e}")
-        return MLAuthResponse(
-            success=False,
-            message=f"Erro ao gerar URL de autorização: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar URL de autorização: {str(e)}")
 
 @router.post("/auth/mercadolivre/callback")
 async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario = Depends(get_current_user)):
     """Processa callback do OAuth do Mercado Livre"""
     try:
-        logger.info(f"🔄 Processando callback ML para usuário {current_user.id}")
-        
-        # Verificar se credenciais estão configuradas
-        ml_client_id = os.getenv("ML_CLIENT_ID")
-        ml_client_secret = os.getenv("ML_CLIENT_SECRET")
-        
-        if not ml_client_id or not ml_client_secret:
-            raise HTTPException(
-                status_code=503, 
-                detail="Mercado Livre não configurado no servidor"
-            )
-        
         # Trocar código por token
-        token_data = await exchange_code_for_token(auth_data.code, auth_data.state)
+        token_data = await exchange_code_for_token(auth_data.code)
         
         # Salvar token para o usuário
         MLTokenManager.save_token(current_user.id, token_data)
-        
-        logger.info(f"✅ Autorização ML concluída para usuário {current_user.id}")
         
         return {
             "success": True,
@@ -235,72 +142,111 @@ async def mercadolivre_callback(auth_data: MLAuthRequest, current_user: Usuario 
             "scope": token_data.get("scope")
         }
     except Exception as e:
-        logger.error(f"❌ Erro no callback ML para usuário {current_user.id}: {e}")
         raise HTTPException(status_code=400, detail=f"Erro no callback OAuth: {str(e)}")
 
 @router.delete("/auth/mercadolivre/revoke")
 async def revoke_mercadolivre_auth(current_user: Usuario = Depends(get_current_user)):
     """Revoga autorização do Mercado Livre para o usuário"""
-    try:
-        MLTokenManager.revoke_token(current_user.id)
-        return {"success": True, "message": "Autorização do Mercado Livre revogada"}
-    except Exception as e:
-        logger.error(f"Erro ao revogar ML: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao revogar autorização")
+    MLTokenManager.revoke_token(current_user.id)
+    return {"success": True, "message": "Autorização do Mercado Livre revogada"}
+
+@router.get("/auth/mercadolivre/status")
+async def mercadolivre_auth_status(current_user: Usuario = Depends(get_current_user)):
+    """Verifica status da autorização do Mercado Livre"""
+    token = MLTokenManager.get_token(current_user.id)
+    return {
+        "authorized": token is not None,
+        "message": "Autorizado" if token else "Não autorizado"
+    }
+
+# --- USUÁRIOS ---
+@router.get("/usuarios/me", response_model=UsuarioOut)
+async def get_me(current_user: Usuario = Depends(get_current_user)):
+    return current_user
 
 # --- PRODUTOS MONITORADOS ---
 @router.post("/produtos/", response_model=ProdutoMonitoradoOut)
-async def adicionar_produto(produto: ProdutoMonitoradoCreate, db: Session = Depends(get_db_safe), current_user: Usuario = Depends(get_current_user)):
-    try:
-        db_produto = ProdutoMonitorado(
-            usuario_id=current_user.id,
-            ml_id=produto.ml_id,
-            nome=produto.nome,
-            url=produto.url,
-            preco_atual=0.0,
-            estoque_atual=0,
-            criado_em=datetime.utcnow()
-        )
-        db.add(db_produto)
-        db.commit()
-        db.refresh(db_produto)
-        return db_produto
-    except Exception as e:
-        logger.error(f"Erro ao adicionar produto: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail="Erro ao adicionar produto")
+async def adicionar_produto(produto: ProdutoMonitoradoCreate, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    db_produto = ProdutoMonitorado(
+        usuario_id=current_user.id,
+        ml_id=produto.ml_id,
+        nome=produto.nome,
+        url=produto.url,
+        preco_atual=0.0,
+        estoque_atual=0,
+        criado_em=datetime.utcnow()
+    )
+    db.add(db_produto)
+    db.commit()
+    db.refresh(db_produto)
+    return db_produto
 
 @router.get("/produtos/", response_model=List[ProdutoMonitoradoOut])
-async def listar_produtos(db: Session = Depends(get_db_safe), current_user: Usuario = Depends(get_current_user)):
-    try:
-        produtos = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.usuario_id == current_user.id).all()
-        return produtos
-    except Exception as e:
-        logger.error(f"Erro ao listar produtos: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao listar produtos")
+async def listar_produtos(db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    produtos = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.usuario_id == current_user.id).all()
+    return produtos
 
-# --- BUSCA DE PRODUTOS ---
+@router.delete("/produtos/{produto_id}", status_code=204)
+async def remover_produto(produto_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    db.delete(produto)
+    db.commit()
+    return
+
+@router.put("/produtos/{produto_id}", response_model=ProdutoMonitoradoOut)
+async def atualizar_produto(produto_id: int, produto: ProdutoMonitoradoCreate, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    db_produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
+    if not db_produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    db_produto.ml_id = produto.ml_id
+    db_produto.nome = produto.nome
+    db_produto.url = produto.url
+    db.commit()
+    db.refresh(db_produto)
+    return db_produto
+
+@router.put("/produtos/{produto_id}/atualizar", response_model=ProdutoMonitoradoOut)
+async def atualizar_produto_ml(produto_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    
+    # Buscar dados do Mercado Livre com autenticação do usuário
+    dados_ml = await buscar_produto_ml(produto.ml_id, current_user.id)
+    if not dados_ml:
+        raise HTTPException(status_code=404, detail="Produto não encontrado na API do Mercado Livre")
+    
+    produto.nome = dados_ml["nome"]
+    produto.preco_atual = dados_ml["preco"]
+    produto.estoque_atual = dados_ml["estoque"]
+    produto.url = dados_ml["url"]
+    db.commit()
+    db.refresh(produto)
+    return produto
+
+# --- BUSCA DE PRODUTOS - CORRIGIDA ---
 @router.get("/produtos/search/{query}")
 async def buscar_produtos(query: str, current_user: Usuario = Depends(get_current_user)):
     """Busca produtos no Mercado Livre"""
-    
-    # Validar query
-    if not query or len(query.strip()) < 2:
-        raise HTTPException(status_code=400, detail="Termo de busca deve ter pelo menos 2 caracteres")
-    
-    query_clean = query.strip()[:100]  # Limitar tamanho
-    logger.info(f"🔍 Busca ML: '{query_clean}' (usuário: {current_user.id})")
-    
     try:
-        # Buscar produtos com timeout
-        import asyncio
-        resultados = await asyncio.wait_for(
-            buscar_produtos_ml(query_clean, current_user.id, limit=15),
-            timeout=20.0
-        )
+        # Validar query
+        if not query or len(query.strip()) < 2:
+            return {
+                "success": False,
+                "query": query,
+                "total": 0,
+                "results": [],
+                "message": "Termo de busca deve ter pelo menos 2 caracteres"
+            }
+        
+        query_clean = query.strip()[:100]
+        
+        # Buscar produtos
+        resultados = await buscar_produtos_ml(query_clean, current_user.id)
         
         if not resultados:
-            logger.warning(f"⚠️ Busca retornou None para '{query_clean}'")
             return {
                 "success": False,
                 "query": query_clean,
@@ -309,158 +255,177 @@ async def buscar_produtos(query: str, current_user: Usuario = Depends(get_curren
                 "message": "Nenhum produto encontrado ou erro na API do Mercado Livre"
             }
         
-        search_type = resultados.get("_search_type", "authenticated")
-        total_results = resultados.get("paging", {}).get("total", 0)
-        products = resultados.get("results", [])
-        
-        logger.info(f"✅ Busca '{query_clean}': {len(products)} produtos de {total_results} total (tipo: {search_type})")
-        
-        return {
-            "success": True,
-            "query": query_clean,
-            "total": total_results,
-            "results": products,
-            "search_type": search_type,
-            "message": f"Busca {'autenticada' if search_type == 'authenticated' else 'pública'} bem-sucedida"
-        }
-    
-    except asyncio.TimeoutError:
-        logger.error(f"❌ Timeout na busca '{query_clean}'")
-        raise HTTPException(status_code=504, detail="Timeout na busca. Tente novamente.")
-    
-    except HTTPException:
-        raise
-    
-    except Exception as e:
-        logger.error(f"❌ Erro na busca '{query_clean}': {str(e)[:200]}")
-        
-        # Não retornar erro 500, mas sim uma resposta com sucesso=false
-        return {
-            "success": False,
-            "query": query_clean,
-            "total": 0,
-            "results": [],
-            "error": "Erro interno na busca",
-            "message": "Erro temporário. Tente novamente em alguns momentos."
-        }
-
-@router.get("/test/search-public/{query}")
-async def test_search_public(query: str):
-    """Testar busca pública (sem autenticação)"""
-    try:
-        if not query or len(query.strip()) < 2:
-            return {"success": False, "message": "Query muito curta"}
-        
-        query_clean = query.strip()[:100]
-        logger.info(f"🧪 Teste busca pública: '{query_clean}'")
-        
-        import asyncio
-        resultados = await asyncio.wait_for(
-            buscar_produtos_ml_simples(query_clean, limit=5),
-            timeout=15.0
-        )
-        
-        if not resultados:
-            return {"success": False, "message": "Nenhum resultado encontrado"}
-        
         return {
             "success": True,
             "query": query_clean,
             "total": resultados.get("paging", {}).get("total", 0),
-            "results": resultados.get("results", [])[:3],
-            "search_type": resultados.get("_search_type", "public"),
-            "message": "Busca pública funcionando",
-            "timestamp": resultados.get("_timestamp")
+            "results": resultados.get("results", []),
+            "message": "Busca realizada com sucesso"
         }
-    except asyncio.TimeoutError:
-        return {"success": False, "message": "Timeout na busca pública"}
+        
     except Exception as e:
-        logger.error(f"❌ Erro no teste de busca: {str(e)[:200]}")
-        return {"success": False, "message": f"Erro: {str(e)[:100]}"}
+        # Retornar erro estruturado ao invés de HTTPException
+        return {
+            "success": False,
+            "query": query,
+            "total": 0,
+            "results": [],
+            "error": str(e)[:100],
+            "message": "Erro na busca. Tente novamente."
+        }
 
-# --- TESTES E DIAGNÓSTICO ---
+# --- HISTÓRICO DE PREÇOS ---
+@router.post("/produtos/{produto_id}/historico", response_model=HistoricoPrecoOut)
+async def registrar_historico(produto_id: int, preco: float, estoque: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    historico = HistoricoPreco(
+        produto_id=produto_id,
+        preco=preco,
+        estoque=estoque,
+        data=datetime.utcnow()
+    )
+    db.add(historico)
+    db.commit()
+    db.refresh(historico)
+    return historico
+
+@router.get("/produtos/{produto_id}/historico", response_model=List[HistoricoPrecoOut])
+async def listar_historico(produto_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    historico = db.query(HistoricoPreco).filter(HistoricoPreco.produto_id == produto_id).order_by(HistoricoPreco.data.desc()).all()
+    return historico
+
+# --- ALERTAS ---
+@router.post("/alertas/", response_model=AlertaOut)
+async def criar_alerta(alerta: AlertaCreate, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    # Supondo que alerta tem produto_id e preco_alvo
+    db_alerta = Alerta(
+        usuario_id=current_user.id,
+        produto_id=alerta.produto_id,
+        preco_alvo=alerta.preco_alvo,
+        enviado=False
+    )
+    db.add(db_alerta)
+    db.commit()
+    db.refresh(db_alerta)
+    return db_alerta
+
+@router.get("/alertas/", response_model=List[AlertaOut])
+async def listar_alertas(db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    alertas = db.query(Alerta).filter(Alerta.usuario_id == current_user.id).all()
+    return alertas
+
+@router.delete("/alertas/{alerta_id}", status_code=204)
+async def remover_alerta(alerta_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    alerta = db.query(Alerta).filter(Alerta.id == alerta_id, Alerta.usuario_id == current_user.id).first()
+    if not alerta:
+        raise HTTPException(status_code=404, detail="Alerta não encontrado")
+    db.delete(alerta)
+    db.commit()
+    return
+
+@router.get("/produtos/{produto_id}/resumo_avaliacoes")
+async def resumo_avaliacoes(produto_id: int, db: Session = Depends(get_db), current_user: Usuario = Depends(get_current_user)):
+    produto = db.query(ProdutoMonitorado).filter(ProdutoMonitorado.id == produto_id, ProdutoMonitorado.usuario_id == current_user.id).first()
+    if not produto:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+    avaliacoes = await buscar_avaliacoes_ml(produto.ml_id, current_user.id)
+    resumo = await gerar_resumo_avaliacoes(avaliacoes)
+    return {"resumo": resumo}
+
+# --- TESTES E DIAGNÓSTICOS ---
 @router.get("/test/health")
 async def test_health():
     """Endpoint para testar se a API está funcionando"""
-    return {
-        "status": "ok", 
-        "message": "Rotas funcionando corretamente", 
-        "timestamp": datetime.utcnow()
-    }
+    return {"status": "ok", "message": "Backend funcionando corretamente", "timestamp": datetime.utcnow()}
 
 @router.get("/test/mercadolivre", response_model=MLTestResponse)
 async def test_mercadolivre():
-    """Testar conectividade com a API do Mercado Livre"""
+    """Testar conectividade com a API do Mercado Livre (sem autenticação)"""
     try:
-        from mercadolivre import check_ml_configuration, buscar_produtos_ml_simples
+        # Testar busca pública (sem autenticação)
+        async with httpx.AsyncClient() as client:
+            response = await client.get("https://api.mercadolibre.com/sites/MLB/search?q=teste&limit=1")
         
-        # Verificar configuração
-        config_status = check_ml_configuration()
-        
-        # Teste real da API
-        test_result = await buscar_produtos_ml_simples("teste", limit=1)
-        
-        if test_result and test_result.get("results"):
+        if response.status_code == 200:
+            data = response.json()
             return MLTestResponse(
                 success=True,
-                message="API Mercado Livre funcionando perfeitamente",
+                message="Conexão com Mercado Livre OK (acesso público)",
                 data={
-                    **config_status,
-                    "api_test": "success",
-                    "total_results": test_result.get("paging", {}).get("total", 0),
-                    "sample_product": test_result.get("results", [{}])[0].get("title", "N/A") if test_result.get("results") else "N/A",
-                    "search_type": test_result.get("_search_type", "unknown"),
-                    "timestamp": test_result.get("_timestamp")
+                    "total_results": data.get("paging", {}).get("total", 0),
+                    "sample_product": data.get("results", [{}])[0].get("title", "Nenhum produto") if data.get("results") else "Nenhum resultado"
                 }
             )
         else:
             return MLTestResponse(
                 success=False,
-                message="API Mercado Livre não retornou resultados",
-                data={**config_status, "api_test": "no_results"}
+                message=f"Erro HTTP {response.status_code}",
+                data={}
             )
     except Exception as e:
-        logger.error(f"❌ Erro no teste ML: {e}")
         return MLTestResponse(
             success=False,
-            message=f"Erro ao conectar com ML: {str(e)[:100]}",
-            data={"error": str(e)[:200]}
+            message=f"Erro ao conectar com Mercado Livre: {str(e)}",
+            data={}
         )
 
-@router.get("/test/database")
-async def test_database_router():
-    """Testar banco de dados via rota"""
+@router.get("/test/search/{query}")
+async def test_search(query: str):
+    """Testar busca de produtos no Mercado Livre (sem autenticação)"""
     try:
-        from database import get_database_status
-        status = get_database_status()
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}&limit=5"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "success": True,
+                "message": f"Busca por '{query}' realizada com sucesso (acesso público)",
+                "total_results": data.get("paging", {}).get("total", 0),
+                "results": data.get("results", [])[:3]  # Apenas 3 primeiros
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Erro HTTP {response.status_code}",
+                "note": "APIs avançadas do ML podem precisar de autenticação OAuth",
+                "data": {}
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Erro na busca: {str(e)}",
+            "data": {}
+        }
+
+@router.get("/test/database")
+async def test_database(db: Session = Depends(get_db)):
+    """Testar conexão com banco de dados"""
+    try:
+        # Contar usuários
+        total_usuarios = db.query(Usuario).count()
+        total_produtos = db.query(ProdutoMonitorado).count()
+        total_alertas = db.query(Alerta).count()
         
         return {
-            "success": status["connection_test"],
-            "message": "Banco funcionando" if status["connection_test"] else "Problema no banco",
-            "details": status,
-            "timestamp": datetime.utcnow()
+            "success": True,
+            "message": "Conexão com banco de dados OK",
+            "stats": {
+                "usuarios": total_usuarios,
+                "produtos": total_produtos,
+                "alertas": total_alertas
+            }
         }
     except Exception as e:
         return {
             "success": False,
-            "message": f"Erro no teste: {str(e)}",
-            "timestamp": datetime.utcnow()
+            "message": f"Erro no banco de dados: {str(e)}",
+            "stats": {}
         }
-
-@router.get("/test/ml-config")
-async def test_ml_config():
-    """Testar configuração do Mercado Livre"""
-    ml_client_id = os.getenv("ML_CLIENT_ID")
-    ml_client_secret = os.getenv("ML_CLIENT_SECRET")
-    
-    return {
-        "ml_client_id_configured": bool(ml_client_id),
-        "ml_client_secret_configured": bool(ml_client_secret),
-        "ml_client_id_preview": ml_client_id[:15] + "..." if ml_client_id else None,
-        "ready_for_oauth": bool(ml_client_id and ml_client_secret),
-        "next_steps": [
-            "Configure ML_CLIENT_ID no Railway" if not ml_client_id else "✅ ML_CLIENT_ID configurado",
-            "Configure ML_CLIENT_SECRET no Railway" if not ml_client_secret else "✅ ML_CLIENT_SECRET configurado",
-            "Registre aplicação no Mercado Livre Developers" if not (ml_client_id and ml_client_secret) else "✅ Configuração completa"
-        ]
-    }
