@@ -19,6 +19,9 @@ import asyncio
 from openai_utils import gerar_resumo_avaliacoes
 import httpx
 from pydantic import BaseModel
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -37,73 +40,85 @@ class MLAuthResponse(BaseModel):
 # --- AUTENTICAÇÃO ---
 @router.post("/auth/register", response_model=UsuarioOut)
 async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
-    print(f"✅ DEBUG: Tentando registrar usuário: {usuario.email}")
+    logger.info(f"✅ DEBUG: Tentando registrar usuário: {usuario.email}")
     
-    # Verificar se usuário já existe
-    existing_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
-    if existing_user:
-        print(f"❌ DEBUG: Email já existe: {usuario.email}")
-        raise HTTPException(status_code=400, detail="Email já cadastrado")
-    
-    # Hash da senha
-    if not usuario.senha or len(usuario.senha) < 6:
-        raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 6 caracteres")
-        
-    senha_hash = pwd_context.hash(usuario.senha)
-    print(f"🔒 DEBUG: Senha hash gerado: Sim")
-    
-    # Criar usuário
-    db_usuario = Usuario(
-        email=usuario.email, 
-        nome=usuario.nome, 
-        senha_hash=senha_hash,
-        is_active=True,
-        criado_em=datetime.utcnow()
-    )
-    
-    db.add(db_usuario)
     try:
+        # Verificar se usuário já existe
+        existing_user = db.query(Usuario).filter(Usuario.email == usuario.email).first()
+        if existing_user:
+            logger.warning(f"❌ DEBUG: Email já existe: {usuario.email}")
+            raise HTTPException(status_code=400, detail="Email já cadastrado")
+        
+        # Validar senha
+        if not usuario.senha or len(usuario.senha) < 6:
+            raise HTTPException(status_code=400, detail="Senha deve ter pelo menos 6 caracteres")
+            
+        # Hash da senha
+        senha_hash = pwd_context.hash(usuario.senha)
+        logger.info(f"🔒 DEBUG: Senha hash gerado para: {usuario.email}")
+        
+        # Criar usuário
+        db_usuario = Usuario(
+            email=usuario.email, 
+            nome=usuario.nome, 
+            senha_hash=senha_hash,
+            is_active=True,
+            criado_em=datetime.utcnow()
+        )
+        
+        db.add(db_usuario)
         db.flush()  # Forçar flush antes do commit
         db.commit()
         db.refresh(db_usuario)
-        print(f"✅ DEBUG: Usuário criado com sucesso: ID {db_usuario.id}")
+        logger.info(f"✅ DEBUG: Usuário criado com sucesso: ID {db_usuario.id}")
+        
+        return db_usuario
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        db.rollback()
+        raise
     except Exception as e:
-        print(f"❌ DEBUG: Erro ao criar usuário: {e}")
+        logger.error(f"❌ DEBUG: Erro ao criar usuário: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro interno do servidor: {str(e)}")
-    
-    return db_usuario
 
 @router.post("/auth/login") 
 async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
-    print(f"🔐 DEBUG: Tentativa de login: {login_data.email}")
+    logger.info(f"🔐 DEBUG: Tentativa de login: {login_data.email}")
     
-    user = db.query(Usuario).filter(Usuario.email == login_data.email).first()
-    if not user:
-        print(f"❌ DEBUG: Usuário não encontrado: {login_data.email}")
-        raise HTTPException(status_code=401, detail="Credenciais inválidas")
-    
-    # Verificar senha (se existe hash)
-    if not user.senha_hash:
-        print(f"❌ DEBUG: Usuário {login_data.email} não tem senha configurada")
-        raise HTTPException(status_code=401, detail="Credenciais inválidas")
+    try:
+        user = db.query(Usuario).filter(Usuario.email == login_data.email).first()
+        if not user:
+            logger.warning(f"❌ DEBUG: Usuário não encontrado: {login_data.email}")
+            raise HTTPException(status_code=401, detail="Credenciais inválidas")
         
-    if not pwd_context.verify(login_data.senha, user.senha_hash):
-        print(f"❌ DEBUG: Senha incorreta para: {login_data.email}")
-        raise HTTPException(status_code=401, detail="Credenciais inválidas")
-    
-    print(f"✅ DEBUG: Login bem-sucedido: {user.email}")
-    
-    access_token = create_access_token(data={"sub": user.email})
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer",
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "nome": user.nome
+        # Verificar senha (se existe hash)
+        if not user.senha_hash:
+            logger.warning(f"❌ DEBUG: Usuário {login_data.email} não tem senha configurada")
+            raise HTTPException(status_code=401, detail="Credenciais inválidas")
+            
+        if not pwd_context.verify(login_data.senha, user.senha_hash):
+            logger.warning(f"❌ DEBUG: Senha incorreta para: {login_data.email}")
+            raise HTTPException(status_code=401, detail="Credenciais inválidas")
+        
+        logger.info(f"✅ DEBUG: Login bem-sucedido: {user.email}")
+        
+        access_token = create_access_token(data={"sub": user.email})
+        return {
+            "access_token": access_token, 
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "nome": user.nome
+            }
         }
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ DEBUG: Erro no login: {e}")
+        raise HTTPException(status_code=500, detail="Erro interno do servidor")
 
 @router.post("/auth/google")
 async def login_google(token_id: str, db: Session = Depends(get_db)):
