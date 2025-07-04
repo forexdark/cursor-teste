@@ -30,9 +30,7 @@ app = FastAPI(
 origins = [
     "https://vigia-meli.vercel.app",
     "http://localhost:3000",
-    "https://localhost:3000",
-    "https://*.vercel.app",
-    "*"  # Temporário para debug
+    "https://localhost:3000"
 ]
 
 app.add_middleware(
@@ -41,6 +39,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
 
 # Event handlers
 @app.on_event("startup")
@@ -130,6 +129,19 @@ def root():
         "health": "/health"
     }
 
+# Adicionar handler OPTIONS global para CORS preflight
+@app.options("/{full_path:path}")
+async def options_handler(request):
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "https://vigia-meli.vercel.app",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Credentials": "true"
+        }
+    )
+
 @app.get("/health")
 async def health():
     """Endpoint de verificação de saúde"""
@@ -143,21 +155,20 @@ async def health():
             "version": "1.0.0",
             "database": database_status,
             "environment": os.getenv("RAILWAY_ENVIRONMENT", "development"),
-            "cors": "enabled"
+            "cors": "enabled",
+            "origins": origins
         }
     except Exception as e:
         logger.error(f"Erro no health check: {e}")
-        response = JSONResponse(
+        return JSONResponse(
             status_code=503,
-            content={"status": "error", "message": str(e)}
+            content={"status": "error", "message": str(e)},
+            headers={
+                "Access-Control-Allow-Origin": "https://vigia-meli.vercel.app",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization"
+            }
         )
-        # Adicionar headers CORS mesmo em erro
-        response.headers.update({
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization"
-        })
-        return response
 
 # Endpoint de diagnóstico
 @app.get("/debug/info")
