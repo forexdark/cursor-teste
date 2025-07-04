@@ -291,7 +291,7 @@ async def search_produtos(query: str):
         print(f"📋 DEBUG: Fazendo requisição SEM NENHUM HEADER (requests.get puro)")
         
         print(f"🚀 DEBUG: Iniciando requisição HTTP...")
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(url)
         print(f"📊 DEBUG: Response status code: {resp.status_code}")
         print(f"📋 DEBUG: Response text preview: {resp.text[:200]}...")
         
@@ -329,7 +329,7 @@ async def search_produtos(query: str):
             try:
                 if vendedor_id:
                     print(f"🔄 DEBUG: Buscando dados do vendedor {vendedor_id}...")
-                    vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}", timeout=5)
+                    vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}")
                     vendedor_resp.raise_for_status()
                     vendedor_json = vendedor_resp.json()
                     vendedor_info = {
