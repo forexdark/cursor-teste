@@ -9,6 +9,12 @@ import uvicorn
 from datetime import datetime, timezone
 import logging
 
+# Verificar se todas as variáveis críticas estão configuradas
+required_vars = ["DATABASE_URL"]
+missing_vars = [var for var in required_vars if not os.getenv(var)]
+if missing_vars:
+    print(f"❌ Variáveis obrigatórias faltando: {missing_vars}")
+
 # Carregar variáveis de ambiente
 load_dotenv()
 
@@ -67,6 +73,17 @@ async def startup_event():
     
     if not database_url:
         logger.warning("⚠️ DATABASE_URL não configurada - algumas funcionalidades podem não funcionar")
+    
+    # Testar conexão com banco
+    if database_url:
+        try:
+            from database import test_database_connection
+            if test_database_connection():
+                logger.info("✅ Conexão com banco de dados testada com sucesso")
+            else:
+                logger.error("❌ Falha no teste de conexão com banco")
+        except Exception as e:
+            logger.error(f"❌ Erro ao testar banco: {e}")
 
 # Importar e incluir rotas (com tratamento de erro)
 try:
@@ -93,9 +110,11 @@ async def not_found_handler(request, exc):
             "detail": "Endpoint não encontrado",
             "url": str(request.url),
             "method": request.method,
+            "tip": "Verifique se a URL está correta",
             "available_endpoints": [
                 "GET /",
                 "GET /health",
+                "GET /test/cors",
                 "POST /auth/register", 
                 "POST /auth/login",
                 "GET /test/mercadolivre",
@@ -112,6 +131,7 @@ async def method_not_allowed_handler(request, exc):
         content={
             "detail": f"Método {request.method} não permitido para este endpoint",
             "url": str(request.url),
+            "allowed_methods": "POST" if "auth" in str(request.url) else "GET",
             "tip": "Verifique se está usando POST para login/register e GET para busca"
         }
     )
@@ -144,8 +164,14 @@ def root():
 def health():
     """Endpoint de verificação de saúde"""
     try:
-        # Verificar conexão com banco (se disponível)
-        database_status = "ok" if os.getenv('DATABASE_URL') else "not_configured"
+        # Verificar conexão com banco
+        database_status = "not_configured"
+        if os.getenv('DATABASE_URL'):
+            try:
+                from database import test_database_connection
+                database_status = "ok" if test_database_connection() else "error"
+            except Exception as e:
+                database_status = f"error: {str(e)[:50]}"
         
         return {
             "status": "ok",
@@ -171,8 +197,41 @@ def test_cors():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "allowed_origins": origins,
         "credentials": True,
-        "message": "CORS configurado corretamente"
+        "message": "CORS configurado corretamente",
+        "frontend_url": os.getenv('FRONTEND_URL', 'not_set')
     }
+
+# Endpoint de teste de banco
+@app.get("/test/database")
+def test_database():
+    """Endpoint para testar conexão com banco"""
+    try:
+        from database import test_database_connection
+        
+        if test_database_connection():
+            return {
+                "database": "ok",
+                "message": "Conexão com banco funcionando",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "database": "error",
+                    "message": "Falha na conexão com banco",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+            )
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "database": "error",
+                "message": f"Erro no teste de banco: {str(e)}",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
 
 # Endpoint de diagnóstico
 @app.get("/debug/info")
@@ -181,6 +240,7 @@ def debug_info():
     return {
         "python_version": sys.version,
         "working_directory": os.getcwd(),
+        "database_url_configured": bool(os.getenv('DATABASE_URL')),
         "environment_vars": {
             "DATABASE_URL": "✅ Set" if os.getenv('DATABASE_URL') else "❌ Not Set",
             "ML_CLIENT_ID": "✅ Set" if os.getenv('ML_CLIENT_ID') else "❌ Not Set",

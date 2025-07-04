@@ -67,7 +67,6 @@ async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
         )
         
         db.add(db_usuario)
-        db.flush()  # Forçar flush antes do commit
         db.commit()
         db.refresh(db_usuario)
         logger.info(f"✅ DEBUG: Usuário criado com sucesso: ID {db_usuario.id}")
@@ -81,7 +80,12 @@ async def register(usuario: UsuarioCreate, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ DEBUG: Erro ao criar usuário: {e}")
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Erro interno do servidor: {str(e)}")
+        
+        # Verificar se é erro de conexão
+        if "connection" in str(e).lower() or "network" in str(e).lower():
+            raise HTTPException(status_code=503, detail="Serviço temporariamente indisponível. Tente novamente em alguns momentos.")
+        else:
+            raise HTTPException(status_code=500, detail="Erro interno do servidor")
 
 @router.post("/auth/login") 
 async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
@@ -118,7 +122,12 @@ async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"❌ DEBUG: Erro no login: {e}")
-        raise HTTPException(status_code=500, detail="Erro interno do servidor")
+        
+        # Verificar se é erro de conexão
+        if "connection" in str(e).lower() or "network" in str(e).lower():
+            raise HTTPException(status_code=503, detail="Serviço temporariamente indisponível")
+        else:
+            raise HTTPException(status_code=500, detail="Erro interno do servidor")
 
 @router.post("/auth/google")
 async def login_google(token_id: str, db: Session = Depends(get_db)):
