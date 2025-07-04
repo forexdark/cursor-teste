@@ -273,61 +273,59 @@ async def search_products_public(query: str):
         }
 
 @router.get("/produtos/search/{query}")
-async def buscar_produtos(query: str, current_user: Usuario = Depends(get_current_user)):
-    """Busca produtos no Mercado Livre - versão simplificada e robusta"""
+async def search_produtos(query: str):
+    """Busca produtos no Mercado Livre - PÚBLICA (sem token OAuth)"""
     try:
-        print(f"🔍 Busca simples iniciada: '{query}' para user {current_user.id}")
+        print(f"🔍 Busca pública iniciada: '{query}'")
         
-        # Busca direta na API do Mercado Livre
-        async with httpx.AsyncClient() as client:
-            url = f"https://api.mercadolibre.com/sites/MLB/search?q={query.strip()}&limit=15"
-            print(f"📡 Fazendo requisição para: {url}")
-            
-            response = await client.get(url, timeout=10.0)
-            print(f"📊 Status da resposta: {response.status_code}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                total_found = data.get("paging", {}).get("total", 0)
-                results = data.get("results", [])
-                
-                print(f"📦 ML retornou {len(results)} produtos (total disponível: {total_found})")
-                
-                if not results:
-                    return {
-                        "success": False,
-                        "query": query,
-                        "total": 0,
-                        "results": [],
-                        "message": f"Nenhum produto encontrado para '{query}' no Mercado Livre"
-                    }
+        # Busca PÚBLICA - SEM TOKEN - direto na API do Mercado Livre
+        url = f"https://api.mercadolibre.com/sites/MLB/search?q={query}"
         
-                return {
-                    "success": True,
-                    "query": query,
-                    "total": total_found,
-                    "results": results,
-                    "search_type": "simple_ml_api"
+        import requests
+        resp = requests.get(url, timeout=10)
+        
+        if resp.status_code == 401:
+            raise HTTPException(status_code=502, detail="API pública do Mercado Livre não aceita Auth Token. Remover qualquer header Authorization dessa rota.")
+        
+        resp.raise_for_status()
+        data = resp.json()
+        
+        results = []
+        for produto in data.get("results", [])[:10]:
+            # Dados do vendedor (opcional, pode dar rate limit)
+            vendedor_id = produto["seller"]["id"]
+            vendedor_info = {}
+            try:
+                vendedor_resp = requests.get(f"https://api.mercadolibre.com/users/{vendedor_id}", timeout=5)
+                vendedor_resp.raise_for_status()
+                vendedor_json = vendedor_resp.json()
+                vendedor_info = {
+                    "id": vendedor_id,
+                    "nickname": vendedor_json.get("nickname"),
+                    "registration_date": vendedor_json.get("registration_date"),
+                    "reputation": vendedor_json.get("seller_reputation"),
                 }
-            else:
-                print(f"❌ ML API retornou erro {response.status_code}")
-                return {
-                    "success": False,
-                    "query": query,
-                    "total": 0,
-                    "results": [],
-                    "error": f"Mercado Livre API retornou erro {response.status_code}"
-                }
-                
+            except Exception:
+                vendedor_info = {"id": vendedor_id}
+            
+            # Dados completos do produto
+            results.append({
+                "id": produto["id"],
+                "title": produto["title"],
+                "price": produto["price"],
+                "available_quantity": produto["available_quantity"],
+                "sold_quantity": produto["sold_quantity"],
+                "permalink": produto["permalink"],
+                "thumbnail": produto["thumbnail"],
+                "condition": produto["condition"],
+                "attributes": produto["attributes"],
+                "seller": vendedor_info,
+            })
+        
+        return {"success": True, "query": query, "total": len(results), "results": results}
+        
     except Exception as e:
-        print(f"❌ Erro na busca: {e}")
-        return {
-            "success": False,
-            "query": query,
-            "total": 0,
-            "results": [],
-            "error": str(e)
-        }
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar produtos: {str(e)}")
 
 # --- HISTÓRICO DE PREÇOS ---
 @router.post("/produtos/{produto_id}/historico", response_model=HistoricoPrecoOut)
