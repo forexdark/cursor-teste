@@ -116,57 +116,68 @@ export default function AdicionarProduto() {
     }
     
     try {
-      // Tentar buscar diretamente da API do Mercado Livre
-      const targetUrl = `https://api.mercadolibre.com/sites/MLB/search?q=${encodeURIComponent(q)}&limit=15&offset=0`;
+      console.log(`🔍 Buscando produtos para: "${q}"`);
       
-      let produtos: ProdutoML[] = [];
+      // Buscar via nosso backend (que tentará autenticado + fallback público)
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/produtos/search/${encodeURIComponent(q)}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${backendJwt}`,
+          'Content-Type': 'application/json',
+        },
+      });
       
-      try {
-        // Busca direta (pode falhar por CORS)
-        const directResponse = await fetch(targetUrl);
-        if (directResponse.ok) {
-          const data = await directResponse.json();
-          produtos = data.results || [];
+      console.log(`📡 Response status: ${response.status}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`✅ Busca bem-sucedida:`, data);
+        
+        const produtos = data.results || [];
+        
+        // Mostrar tipo de busca no console (desenvolvimento)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`🔍 Tipo de busca: ${data.search_type || 'unknown'}`);
+          console.log(`📊 Total de resultados: ${data.total || 0}`);
         }
-      } catch (corsError) {
-        console.log("CORS bloqueado, tentando via proxy...");
-        try {
-          // Usar proxy CORS
-          const proxyUrl = 'https://api.allorigins.win/get?url=';
-          const proxyResponse = await fetch(`${proxyUrl}${encodeURIComponent(targetUrl)}`);
-          if (proxyResponse.ok) {
-            const proxyData = await proxyResponse.json();
-            const mlData = JSON.parse(proxyData.contents);
-            produtos = mlData.results || [];
-          }
-        } catch (proxyError) {
-          console.error("Erro no proxy:", proxyError);
-          // Último recurso: dados de exemplo
-          setError("Não foi possível conectar com o Mercado Livre. Mostrando dados de exemplo.");
-          produtos = gerarDadosExemplo(q);
+        
+        // Filtrar e ordenar resultados
+        if (produtos.length > 0) {
+          const produtosFiltrados = produtos
+            .filter((produto: ProdutoML) => produto.title.toLowerCase().includes(q.toLowerCase()))
+            .sort((a: ProdutoML, b: ProdutoML) => {
+              const scoreA = (a.sold_quantity || 0) + (a.reviews?.total || 0);
+              const scoreB = (b.sold_quantity || 0) + (b.reviews?.total || 0);
+              return scoreB - scoreA;
+            })
+            .slice(0, 12);
+            
+          setSugestoes(produtosFiltrados);
+          setError(null); // Limpar qualquer erro anterior
+        } else {
+          setSugestoes([]);
+          setError("Nenhum produto encontrado para este termo.");
+        }
+      } else {
+        console.error(`❌ Erro na busca: ${response.status}`);
+        
+        if (response.status === 401) {
+          setError("Sessão expirada. Faça login novamente.");
+        } else if (response.status === 404) {
+          setError("Nenhum produto encontrado para este termo.");
+          setSugestoes([]);
+        } else {
+          const errorData = await response.json().catch(() => ({}));
+          setError(errorData.detail || `Erro ${response.status}: Não foi possível buscar produtos.`);
+          setSugestoes([]);
         }
       }
 
-      // Filtrar e ordenar resultados
-      if (produtos.length > 0) {
-        const produtosFiltrados = produtos
-          .filter(produto => produto.title.toLowerCase().includes(q.toLowerCase()))
-          .sort((a, b) => {
-            const scoreA = (a.sold_quantity || 0) + (a.reviews?.total || 0);
-            const scoreB = (b.sold_quantity || 0) + (b.reviews?.total || 0);
-            return scoreB - scoreA;
-          })
-          .slice(0, 12);
-          
-        setSugestoes(produtosFiltrados);
-      } else {
-        setSugestoes([]);
-      }
 
       setShowSuggestions(true);
     } catch (e: any) {
-      console.error("Erro na busca:", e);
-      setError("Erro inesperado ao buscar produtos. Verifique sua conexão.");
+      console.error("❌ Erro na busca:", e);
+      setError("Erro de conexão. Verifique sua internet e tente novamente.");
       setSugestoes([]);
     } finally {
       setLoading(false);

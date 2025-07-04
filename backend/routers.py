@@ -283,21 +283,53 @@ async def listar_produtos(db: Session = Depends(get_db_safe), current_user: Usua
 @router.get("/produtos/search/{query}")
 async def buscar_produtos(query: str, current_user: Usuario = Depends(get_current_user)):
     """Busca produtos no Mercado Livre"""
+    logger.info(f"🔍 Iniciando busca para '{query}' (usuário: {current_user.id})")
+    
     try:
         resultados = await buscar_produtos_ml(query, current_user.id)
         
         if not resultados:
+            logger.warning(f"⚠️ Nenhum resultado para '{query}'")
             raise HTTPException(status_code=404, detail="Nenhum produto encontrado")
+        
+        # Informações sobre o tipo de busca
+        search_type = resultados.get("_search_type", "authenticated")
+        total_results = resultados.get("paging", {}).get("total", 0)
+        
+        logger.info(f"✅ Busca '{query}' retornou {total_results} resultados (tipo: {search_type})")
+        
+        return {
+            "success": True,
+            "query": query,
+            "total": total_results,
+            "results": resultados.get("results", []),
+            "search_type": search_type,
+            "message": "Busca realizada com token ML" if search_type == "authenticated" else "Busca realizada com API pública"
+        }
+    except Exception as e:
+        logger.error(f"❌ Erro na busca '{query}': {e}")
+        raise HTTPException(status_code=500, detail=f"Erro na busca: {str(e)}")
+
+@router.get("/test/search-public/{query}")
+async def test_search_public(query: str):
+    """Testar busca pública (sem autenticação)"""
+    try:
+        logger.info(f"🧪 Teste busca pública: '{query}'")
+        resultados = await buscar_produtos_ml(query, user_id=None)
+        
+        if not resultados:
+            return {"success": False, "message": "Nenhum resultado encontrado"}
         
         return {
             "success": True,
             "query": query,
             "total": resultados.get("paging", {}).get("total", 0),
-            "results": resultados.get("results", [])
+            "results": resultados.get("results", [])[:3],  # Apenas 3 resultados para teste
+            "message": "Busca pública funcionando"
         }
     except Exception as e:
-        logger.error(f"Erro na busca: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro na busca: {str(e)}")
+        logger.error(f"❌ Erro no teste de busca: {e}")
+        return {"success": False, "message": f"Erro: {str(e)}"}
 
 # --- TESTES E DIAGNÓSTICO ---
 @router.get("/test/health")

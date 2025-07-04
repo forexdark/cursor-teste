@@ -221,27 +221,48 @@ async def buscar_produtos_ml(query: str, user_id: int = None, limit: int = 20):
         "q": query,
         "limit": limit
     }
-    headers = {}
     
-    # Se tiver token do usuário, usar para busca autenticada
+    # Primeira tentativa: com token (se disponível)
     if user_id:
         token = MLTokenManager.get_token(user_id)
         if token:
-            headers["Authorization"] = f"Bearer {token}"
-            logger.info(f"🔑 Usando token ML para buscar '{query}'")
+            try:
+                logger.info(f"🔑 Tentando busca autenticada para '{query}'")
+                headers = {"Authorization": f"Bearer {token}"}
+                
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(url, params=params, headers=headers)
+                    
+                    if resp.status_code == 200:
+                        logger.info(f"✅ Busca ML autenticada bem-sucedida: '{query}'")
+                        return resp.json()
+                    elif resp.status_code == 401:
+                        logger.warning(f"⚠️ Token ML inválido/expirado, tentando busca pública")
+                        # Token inválido, remover e tentar busca pública
+                        MLTokenManager.revoke_token(user_id)
+                    else:
+                        logger.warning(f"⚠️ Erro na busca autenticada: {resp.status_code}, tentando busca pública")
+            except Exception as e:
+                logger.warning(f"⚠️ Erro na busca autenticada: {e}, tentando busca pública")
     
+    # Segunda tentativa: busca pública (sempre funciona)
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, params=params, headers=headers)
+        logger.info(f"🌐 Tentando busca pública para '{query}'")
+        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params=params)
             
             if resp.status_code == 200:
-                logger.info(f"✅ Busca ML realizada: '{query}' - {resp.status_code}")
-                return resp.json()
+                logger.info(f"✅ Busca ML pública bem-sucedida: '{query}'")
+                data = resp.json()
+                # Adicionar flag indicando que foi busca pública
+                data["_search_type"] = "public"
+                return data
             else:
-                logger.warning(f"⚠️ Erro na busca ML: {resp.status_code}")
+                logger.error(f"❌ Erro na busca pública: {resp.status_code}")
                 return None
     except Exception as e:
-        logger.error(f"❌ Erro na busca ML: {e}")
+        logger.error(f"❌ Erro na busca pública: {e}")
         return None
 
 async def buscar_avaliacoes_ml(ml_id: str, user_id: int = None):
