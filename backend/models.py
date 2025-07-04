@@ -3,8 +3,12 @@ from typing import Optional, List
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
+import logging
 
+logger = logging.getLogger(__name__)
 Base = declarative_base()
+
+logger.info("📋 Carregando modelos SQLAlchemy...")
 
 # SQLAlchemy Models
 class Usuario(Base):
@@ -45,6 +49,8 @@ class Alerta(Base):
     preco_alvo = Column(Float)
     enviado = Column(Boolean, default=False)
     criado_em = Column(DateTime, default=datetime.utcnow)
+
+logger.info("✅ Modelos SQLAlchemy carregados com sucesso")
 
 # Pydantic Schemas
 class UsuarioBase(BaseModel):

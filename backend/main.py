@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 import uvicorn
 from datetime import datetime, timezone
 import logging
+from database import initialize_database
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -53,7 +54,23 @@ async def startup_event():
     database_url = os.getenv('DATABASE_URL')
     ml_client_id = os.getenv('ML_CLIENT_ID')
     
-    logger.info(f"🗄️ Database: {'✅ Configurado' if database_url else '❌ NÃO CONFIGURADO'}")
+    # Inicializar banco de dados
+    if database_url:
+        logger.info("🗄️ Iniciando configuração do banco de dados...")
+        db_success = initialize_database()
+        
+        logger.info("🗄️ Database Status:")
+        logger.info(f"  - Configurado: {'✅' if database_url else '❌'}")
+        logger.info(f"  - Engine: {'✅' if db_success else '❌'}")
+        logger.info(f"  - Conexão: {'✅' if db_success else '❌'}")
+        logger.info(f"  - Tabelas: {'✅' if db_success else '❌'}")
+        logger.info(f"  - Tipo: postgresql")
+        
+        if not db_success:
+            logger.warning("⚠️ Banco configurado mas com problemas - algumas funcionalidades podem falhar")
+    else:
+        logger.error("❌ DATABASE_URL não configurada - funcionalidades de banco não estarão disponíveis")
+    
     logger.info(f"🛒 ML Client: {'✅ Configurado' if ml_client_id else '❌ NÃO CONFIGURADO'}")
     
     if not database_url:
@@ -134,8 +151,9 @@ def root():
 async def health():
     """Endpoint de verificação de saúde"""
     try:
-        # Verificar conexão com banco (se disponível)
-        database_status = "ok" if os.getenv('DATABASE_URL') else "not_configured"
+        # Verificar conexão com banco
+        from database import test_database_connection
+        database_status = "ok" if test_database_connection() else "error"
         
         return {
             "status": "ok",
@@ -149,7 +167,11 @@ async def health():
         logger.error(f"Erro no health check: {e}")
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "message": str(e)}
+            content={
+                "status": "error", 
+                "message": str(e),
+                "database": "error"
+            }
         )
 
 # Endpoint de diagnóstico

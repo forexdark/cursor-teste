@@ -7,6 +7,7 @@ from models import (
     HistoricoPrecoOut, AlertaOut, AlertaCreate, 
     Usuario, ProdutoMonitorado, HistoricoPreco, Alerta
 )
+from sqlalchemy import text
 from database import get_db
 from auth import create_access_token, get_current_user, google_oauth_login
 from passlib.context import CryptContext
@@ -431,23 +432,35 @@ async def test_search(query: str):
 async def test_database(db: Session = Depends(get_db)):
     """Testar conexão com banco de dados"""
     try:
+        # Teste básico usando text() para queries SQL
+        db.execute(text("SELECT 1"))
+        
         # Contar usuários
         total_usuarios = db.query(Usuario).count()
         total_produtos = db.query(ProdutoMonitorado).count()
         total_alertas = db.query(Alerta).count()
         
+        # Obter informações do banco
+        version_result = db.execute(text("SELECT version()"))
+        version = version_result.fetchone()[0] if version_result else "Desconhecida"
+        
         return {
             "success": True,
             "message": "Conexão com banco de dados OK",
+            "database_version": version[:100],  # Primeiros 100 caracteres
             "stats": {
                 "usuarios": total_usuarios,
                 "produtos": total_produtos,
                 "alertas": total_alertas
-            }
+            },
+            "connection_test": "passed"
         }
     except Exception as e:
+        logger.error(f"❌ Erro no teste de banco: {e}")
         return {
             "success": False,
             "message": f"Erro no banco de dados: {str(e)}",
-            "stats": {}
+            "stats": {},
+            "connection_test": "failed",
+            "error_type": type(e).__name__
         }
