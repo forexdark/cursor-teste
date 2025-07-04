@@ -56,6 +56,28 @@ async def startup_event():
     logger.info(f"📅 Timestamp: {datetime.now(timezone.utc)}")
     logger.info(f"🌐 CORS Origins: {origins}")
     
+    # Testar API do Mercado Livre na inicialização
+    try:
+        from mercadolivre import check_ml_configuration, buscar_produtos_ml_simples
+        import asyncio
+        
+        ml_config = check_ml_configuration()
+        logger.info(f"🛒 ML Config: {ml_config}")
+        
+        # Teste rápido da API
+        test_result = await asyncio.wait_for(
+            buscar_produtos_ml_simples("teste", limit=1),
+            timeout=10.0
+        )
+        
+        if test_result:
+            logger.info("✅ API Mercado Livre: Conectividade OK")
+        else:
+            logger.warning("⚠️ API Mercado Livre: Sem resposta no teste")
+            
+    except Exception as e:
+        logger.warning(f"⚠️ Erro no teste ML inicial: {str(e)[:100]}")
+    
     # Verificar e configurar banco de dados
     try:
         from database import get_database_status, create_tables

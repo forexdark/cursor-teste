@@ -104,8 +104,9 @@ export default function AdicionarProduto() {
       return;
     }
 
-    setLoading(true);
+    // Limpar estados anteriores
     setError(null);
+    setLoading(true);
     setSearchAttempted(true);
     
     // Verificar se o usuário está autenticado
@@ -116,35 +117,93 @@ export default function AdicionarProduto() {
     }
     
     try {
-      console.log(`🔍 Buscando produtos para: "${q}"`);
+      console.log(`🔍 Iniciando busca: "${q}"`);
       
-      // Buscar via nosso backend (que tentará autenticado + fallback público)
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/produtos/search/${encodeURIComponent(q)}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${backendJwt}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // URL com encoding correto
+      const searchUrl = `${process.env.NEXT_PUBLIC_API_URL}/produtos/search/${encodeURIComponent(q.trim())}`;
+      console.log(`📡 URL de busca: ${searchUrl}`);
       
-      console.log(`📡 Response status: ${response.status}`);
+      // Controller para timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 segundos
       
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`✅ Busca bem-sucedida:`, data);
+      try {
+        const response = await fetch(searchUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${backendJwt}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          signal: controller.signal
+        });
         
-        const produtos = data.results || [];
+        clearTimeout(timeoutId);
         
-        // Mostrar tipo de busca no console (desenvolvimento)
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`🔍 Tipo de busca: ${data.search_type || 'unknown'}`);
-          console.log(`📊 Total de resultados: ${data.total || 0}`);
+        console.log(`📊 Status da resposta: ${response.status}`);
+        
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Erro desconhecido');
+          console.error(`❌ Erro HTTP ${response.status}: ${errorText}`);
+          
+          if (response.status === 401) {
+            setError("Sessão expirada. Faça login novamente.");
+          } else if (response.status === 404) {
+            setError("Nenhum produto encontrado para este termo.");
+          } else if (response.status === 504) {
+            setError("Busca muito lenta. Tente novamente com um termo mais específico.");
+          } else {
+            setError(`Erro na busca (${response.status}). Tente novamente.`);
+          }
+          setSugestoes([]);
+          setShowSuggestions(true);
+          return;
         }
         
-        // Filtrar e ordenar resultados
+        // Parse da resposta JSON
+        let data;
+        try {
+          data = await response.json();
+        } catch (parseError) {
+          console.error("❌ Erro ao fazer parse da resposta:", parseError);
+          setError("Resposta inválida do servidor. Tente novamente.");
+          setSugestoes([]);
+          setShowSuggestions(true);
+          return;
+        }
+        
+        console.log(`📋 Dados recebidos:`, data);
+        
+        // Verificar se a busca foi bem-sucedida
+        if (!data.success) {
+          const errorMsg = data.message || data.error || "Erro na busca";
+          console.warn(`⚠️ Busca não bem-sucedida: ${errorMsg}`);
+          setError(errorMsg);
+          setSugestoes([]);
+          setShowSuggestions(true);
+          return;
+        }
+        
+        // Extrair produtos
+        const produtos = data.results || [];
+        console.log(`📦 Produtos encontrados: ${produtos.length}`);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`🔍 Tipo de busca: ${data.search_type || 'unknown'}`);
+          console.log(`📊 Total disponível: ${data.total || 0}`);
+        }
+        
         if (produtos.length > 0) {
-          const produtosFiltrados = produtos
-            .filter((produto: ProdutoML) => produto.title.toLowerCase().includes(q.toLowerCase()))
+          // Filtrar produtos válidos
+          const produtosValidos = produtos.filter((produto: any) => 
+            produto && 
+            produto.id && 
+            produto.title && 
+            typeof produto.price === 'number'
+          );
+          
+          // Ordenar por relevância
+          const produtosOrdenados = produtosValidos
             .sort((a: ProdutoML, b: ProdutoML) => {
               const scoreA = (a.sold_quantity || 0) + (a.reviews?.total || 0);
               const scoreB = (b.sold_quantity || 0) + (b.reviews?.total || 0);
@@ -152,33 +211,33 @@ export default function AdicionarProduto() {
             })
             .slice(0, 12);
             
-          setSugestoes(produtosFiltrados);
-          setError(null); // Limpar qualquer erro anterior
+          setSugestoes(produtosOrdenados);
+          console.log(`✅ ${produtosOrdenados.length} produtos válidos carregados`);
         } else {
-          setSugestoes([]);
           setError("Nenhum produto encontrado para este termo.");
+          setSugestoes([]);
         }
-      } else {
-        console.error(`❌ Erro na busca: ${response.status}`);
         
-        if (response.status === 401) {
-          setError("Sessão expirada. Faça login novamente.");
-        } else if (response.status === 404) {
-          setError("Nenhum produto encontrado para este termo.");
-          setSugestoes([]);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        
+        if (fetchError.name === 'AbortError') {
+          console.error("❌ Timeout na busca");
+          setError("Busca muito lenta. Tente novamente com um termo mais específico.");
         } else {
-          const errorData = await response.json().catch(() => ({}));
-          setError(errorData.detail || `Erro ${response.status}: Não foi possível buscar produtos.`);
-          setSugestoes([]);
+          console.error("❌ Erro na requisição:", fetchError);
+          setError("Erro de conexão. Verifique sua internet e tente novamente.");
         }
+        setSugestoes([]);
       }
 
-
       setShowSuggestions(true);
+      
     } catch (e: any) {
       console.error("❌ Erro na busca:", e);
-      setError("Erro de conexão. Verifique sua internet e tente novamente.");
+      setError("Erro inesperado. Tente novamente em alguns momentos.");
       setSugestoes([]);
+      setShowSuggestions(true);
     } finally {
       setLoading(false);
     }

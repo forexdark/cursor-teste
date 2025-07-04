@@ -283,53 +283,100 @@ async def listar_produtos(db: Session = Depends(get_db_safe), current_user: Usua
 @router.get("/produtos/search/{query}")
 async def buscar_produtos(query: str, current_user: Usuario = Depends(get_current_user)):
     """Busca produtos no Mercado Livre"""
-    logger.info(f"🔍 Iniciando busca para '{query}' (usuário: {current_user.id})")
+    
+    # Validar query
+    if not query or len(query.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Termo de busca deve ter pelo menos 2 caracteres")
+    
+    query_clean = query.strip()[:100]  # Limitar tamanho
+    logger.info(f"🔍 Busca ML: '{query_clean}' (usuário: {current_user.id})")
     
     try:
-        resultados = await buscar_produtos_ml(query, current_user.id)
+        # Buscar produtos com timeout
+        import asyncio
+        resultados = await asyncio.wait_for(
+            buscar_produtos_ml(query_clean, current_user.id, limit=15),
+            timeout=20.0
+        )
         
         if not resultados:
-            logger.warning(f"⚠️ Nenhum resultado para '{query}'")
-            raise HTTPException(status_code=404, detail="Nenhum produto encontrado")
+            logger.warning(f"⚠️ Busca retornou None para '{query_clean}'")
+            return {
+                "success": False,
+                "query": query_clean,
+                "total": 0,
+                "results": [],
+                "message": "Nenhum produto encontrado ou erro na API do Mercado Livre"
+            }
         
-        # Informações sobre o tipo de busca
         search_type = resultados.get("_search_type", "authenticated")
         total_results = resultados.get("paging", {}).get("total", 0)
+        products = resultados.get("results", [])
         
-        logger.info(f"✅ Busca '{query}' retornou {total_results} resultados (tipo: {search_type})")
+        logger.info(f"✅ Busca '{query_clean}': {len(products)} produtos de {total_results} total (tipo: {search_type})")
         
         return {
             "success": True,
-            "query": query,
+            "query": query_clean,
             "total": total_results,
-            "results": resultados.get("results", []),
+            "results": products,
             "search_type": search_type,
-            "message": "Busca realizada com token ML" if search_type == "authenticated" else "Busca realizada com API pública"
+            "message": f"Busca {'autenticada' if search_type == 'authenticated' else 'pública'} bem-sucedida"
         }
+    
+    except asyncio.TimeoutError:
+        logger.error(f"❌ Timeout na busca '{query_clean}'")
+        raise HTTPException(status_code=504, detail="Timeout na busca. Tente novamente.")
+    
+    except HTTPException:
+        raise
+    
     except Exception as e:
-        logger.error(f"❌ Erro na busca '{query}': {e}")
-        raise HTTPException(status_code=500, detail=f"Erro na busca: {str(e)}")
+        logger.error(f"❌ Erro na busca '{query_clean}': {str(e)[:200]}")
+        
+        # Não retornar erro 500, mas sim uma resposta com sucesso=false
+        return {
+            "success": False,
+            "query": query_clean,
+            "total": 0,
+            "results": [],
+            "error": "Erro interno na busca",
+            "message": "Erro temporário. Tente novamente em alguns momentos."
+        }
 
 @router.get("/test/search-public/{query}")
 async def test_search_public(query: str):
     """Testar busca pública (sem autenticação)"""
     try:
-        logger.info(f"🧪 Teste busca pública: '{query}'")
-        resultados = await buscar_produtos_ml(query, user_id=None)
+        if not query or len(query.strip()) < 2:
+            return {"success": False, "message": "Query muito curta"}
+        
+        query_clean = query.strip()[:100]
+        logger.info(f"🧪 Teste busca pública: '{query_clean}'")
+        
+        import asyncio
+        resultados = await asyncio.wait_for(
+            buscar_produtos_ml_simples(query_clean, limit=5),
+            timeout=15.0
+        )
         
         if not resultados:
             return {"success": False, "message": "Nenhum resultado encontrado"}
         
         return {
             "success": True,
-            "query": query,
+            "query": query_clean,
             "total": resultados.get("paging", {}).get("total", 0),
-            "results": resultados.get("results", [])[:3],  # Apenas 3 resultados para teste
-            "message": "Busca pública funcionando"
+            "results": resultados.get("results", [])[:3],
+            "search_type": resultados.get("_search_type", "public"),
+            "message": "Busca pública funcionando",
+            "timestamp": resultados.get("_timestamp")
         }
+    except asyncio.TimeoutError:
+        return {"success": False, "message": "Timeout na busca pública"}
     except Exception as e:
-        logger.error(f"❌ Erro no teste de busca: {e}")
-        return {"success": False, "message": f"Erro: {str(e)}"}
+        logger.error(f"❌ Erro no teste de busca: {str(e)[:200]}")
+        return {"success": False, "message": f"Erro: {str(e)[:100]}"}
 
 # --- TESTES E DIAGNÓSTICO ---
 @router.get("/test/health")
@@ -345,43 +392,39 @@ async def test_health():
 async def test_mercadolivre():
     """Testar conectividade com a API do Mercado Livre"""
     try:
-        # Verificar se credenciais estão configuradas
-        ml_client_id = os.getenv("ML_CLIENT_ID")
-        ml_client_secret = os.getenv("ML_CLIENT_SECRET")
+        from mercadolivre import check_ml_configuration, buscar_produtos_ml_simples
         
-        config_status = {
-            "ml_client_id_configured": bool(ml_client_id),
-            "ml_client_secret_configured": bool(ml_client_secret),
-            "ml_client_id_preview": ml_client_id[:10] + "..." if ml_client_id else None
-        }
+        # Verificar configuração
+        config_status = check_ml_configuration()
         
-        # Teste básico da API pública do Mercado Livre
-        async with httpx.AsyncClient() as client:
-            response = await client.get("https://api.mercadolibre.com/sites/MLB/search?q=teste&limit=1")
+        # Teste real da API
+        test_result = await buscar_produtos_ml_simples("teste", limit=1)
         
-        if response.status_code == 200:
-            data = response.json()
+        if test_result and test_result.get("results"):
             return MLTestResponse(
                 success=True,
-                message="Conexão com Mercado Livre OK",
+                message="API Mercado Livre funcionando perfeitamente",
                 data={
-                    "api_status": "online",
-                    "total_results": data.get("paging", {}).get("total", 0),
-                    "sample_product": data.get("results", [{}])[0].get("title", "Nenhum produto") if data.get("results") else "Nenhum resultado",
-                    "config": config_status
+                    **config_status,
+                    "api_test": "success",
+                    "total_results": test_result.get("paging", {}).get("total", 0),
+                    "sample_product": test_result.get("results", [{}])[0].get("title", "N/A") if test_result.get("results") else "N/A",
+                    "search_type": test_result.get("_search_type", "unknown"),
+                    "timestamp": test_result.get("_timestamp")
                 }
             )
         else:
             return MLTestResponse(
                 success=False,
-                message=f"API Mercado Livre retornou HTTP {response.status_code}",
-                data={"config": config_status}
+                message="API Mercado Livre não retornou resultados",
+                data={**config_status, "api_test": "no_results"}
             )
     except Exception as e:
+        logger.error(f"❌ Erro no teste ML: {e}")
         return MLTestResponse(
             success=False,
-            message=f"Erro ao conectar: {str(e)}",
-            data={"config": config_status if 'config_status' in locals() else {}}
+            message=f"Erro ao conectar com ML: {str(e)[:100]}",
+            data={"error": str(e)[:200]}
         )
 
 @router.get("/test/database")
