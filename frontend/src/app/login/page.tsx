@@ -3,7 +3,7 @@ import { useState } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { FaGoogle, FaEnvelope, FaEye, FaEyeSlash, FaShoppingCart, FaLock, FaUserPlus } from "react-icons/fa";
-import { LucideArrowRight, LucideShield, LucideZap, LucideHeart, LucideArrowLeft, LucideWifi, LucideWifiOff } from "lucide-react";
+import { LucideArrowRight, LucideShield, LucideZap, LucideHeart, LucideArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
@@ -22,9 +22,6 @@ export default function Login() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [backendStatus, setBackendStatus] = useState<"unknown" | "online" | "offline">("unknown");
-  const [debugInfo, setDebugInfo] = useState("");
-  const [googleConfigured, setGoogleConfigured] = useState(true);
 
   // Redirect if already authenticated
   if (status === "authenticated") {
@@ -32,91 +29,29 @@ export default function Login() {
     return null;
   }
 
-  // Verificar status do backend
-  const checkGoogleConfig = () => {
-    // Verificar se as variáveis de ambiente do Google estão configuradas
-    const hasGoogleConfig = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 
-                           typeof window !== 'undefined';
-    setGoogleConfigured(hasGoogleConfig);
-  };
-  const checkBackendStatus = async () => {
-    const apiUrls = [
-      'https://vigia-meli.up.railway.app',
-      process.env.NEXT_PUBLIC_API_URL,
-      'http://localhost:8000'
-    ].filter(Boolean);
-
-    setDebugInfo("🔍 Verificando status do backend...");
-
-    for (const apiUrl of apiUrls) {
-      try {
-        setDebugInfo(`🌐 Testando: ${apiUrl}`);
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
-        const response = await fetch(`${apiUrl}/health`, {
-          method: 'GET',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          setBackendStatus("online");
-          setDebugInfo(`✅ Backend online: ${apiUrl}`);
-          return apiUrl;
-        }
-      } catch (error) {
-        setDebugInfo(`❌ Backend offline: ${apiUrl}`);
-        continue;
-      }
-    }
-    
-    setBackendStatus("offline");
-    setDebugInfo("❌ Todos os servidores estão offline");
-    return null;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setDebugInfo("");
 
     try {
-      // Primeiro verificar se o backend está online
-      const workingBackend = await checkBackendStatus();
-      
-      if (!workingBackend) {
-        setError("Servidor temporariamente indisponível. Tente novamente em alguns momentos.");
-        return;
-      }
-
       if (isLogin) {
-        setDebugInfo("🔐 Fazendo login via NextAuth...");
-        
+        // Login
         const result = await signIn("credentials", {
           email: formData.email,
           password: formData.password,
           redirect: false,
         });
 
-        setDebugInfo(`📊 Resultado do login: ${result?.error ? 'Erro' : 'Sucesso'}`);
-
         if (result?.error) {
           setError("Email ou senha incorretos");
         } else {
-          setDebugInfo("✅ Login bem-sucedido, redirecionando...");
           router.replace("/dashboard");
         }
       } else {
         // Registro
-        setDebugInfo("📝 Criando nova conta...");
-        
         try {
-          const response = await fetch(`${workingBackend}/auth/register`, {
+          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/register`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -128,11 +63,7 @@ export default function Login() {
             }),
           });
 
-          setDebugInfo(`📊 Status do registro: ${response.status}`);
-
           if (response.ok) {
-            setDebugInfo("✅ Conta criada! Fazendo login automático...");
-            
             // Auto login após registro
             const result = await signIn("credentials", {
               email: formData.email,
@@ -148,16 +79,19 @@ export default function Login() {
             }
           } else {
             const data = await response.json().catch(() => ({}));
-            setError(data.detail || "Erro ao criar conta. Tente novamente.");
+            if (data.detail?.includes("Email já cadastrado")) {
+              setError("Este email já está cadastrado. Tente fazer login.");
+            } else {
+              setError(data.detail || "Erro ao criar conta. Tente novamente.");
+            }
           }
         } catch (fetchError) {
-          setError("Erro de conexão com o servidor. Verifique se o backend está funcionando.");
+          setError("Erro de conexão. Verifique sua internet e tente novamente.");
         }
       }
     } catch (err) {
       console.error("Erro de autenticação:", err);
       setError("Erro inesperado. Tente novamente.");
-      setDebugInfo(`❌ Erro: ${err}`);
     } finally {
       setLoading(false);
     }
@@ -165,49 +99,16 @@ export default function Login() {
 
   const handleGoogleSignIn = async () => {
     try {
-      setDebugInfo("🔐 Iniciando login com Google...");
       setError("");
-      
-      // Verificar se Google está configurado
-      if (!googleConfigured) {
-        setError("Google OAuth não está configurado. Entre em contato com o suporte.");
-        return;
-      }
-      
-      setDebugInfo("✅ Iniciando fluxo Google OAuth...");
-      
-      const result = await signIn("google", { 
-        callbackUrl: "/dashboard",
-        redirect: false 
+      await signIn("google", { 
+        callbackUrl: "/dashboard"
       });
-      
-      if (result?.error) {
-        if (result.error === "OAuthCallback") {
-          setError("Erro de configuração do Google OAuth. Verifique se o domínio está autorizado.");
-        } else if (result.error === "OAuthAccountNotLinked") {
-          setError("Esta conta Google já está vinculada a outro usuário.");
-        } else {
-          setError("Erro na autenticação com Google. Tente novamente.");
-        }
-        setDebugInfo(`❌ Erro Google: ${result.error}`);
-      } else if (result?.url) {
-        setDebugInfo("✅ Redirecionando para Google...");
-        window.location.href = result.url;
-      } else {
-        setDebugInfo("🔄 Aguardando resposta do Google...");
-      }
     } catch (error) {
       console.error("Erro Google OAuth:", error);
       setError("Erro na autenticação com Google. Tente novamente.");
-      setDebugInfo(`❌ Erro Google: ${error}`);
     }
   };
 
-  // Verificar configurações ao carregar
-  useState(() => {
-    checkGoogleConfig();
-    checkBackendStatus();
-  });
   const benefits = [
     {
       icon: <LucideZap className="w-5 h-5 text-yellow-500" />,
@@ -235,36 +136,6 @@ export default function Login() {
           <LucideArrowLeft className="mr-2 w-4 h-4 group-hover:-translate-x-1 transition-transform" />
           Voltar ao Início
         </Button>
-      </div>
-
-      {/* Backend Status Indicator */}
-      <div className="absolute top-6 right-6">
-        <div className="flex items-center gap-2">
-          {backendStatus === "online" ? (
-            <div className="flex items-center gap-2 bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm">
-              <LucideWifi className="w-4 h-4" />
-              <span>Servidor Online</span>
-            </div>
-          ) : backendStatus === "offline" ? (
-            <div className="flex items-center gap-2 bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm">
-              <LucideWifiOff className="w-4 h-4" />
-              <span>Servidor Offline</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-sm">
-              <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-              <span>Verificando...</span>
-            </div>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={checkBackendStatus}
-            className="text-xs"
-          >
-            Testar
-          </Button>
-        </div>
       </div>
 
       <div className="flex items-center justify-center min-h-screen p-4">
@@ -351,27 +222,15 @@ export default function Login() {
                 {/* Google Sign In */}
                 <Button
                   type="button"
-                  className={`w-full h-12 text-white border-0 shadow-lg hover:shadow-xl group ${
-                    googleConfigured 
-                      ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700" 
-                      : "bg-gray-400 cursor-not-allowed"
-                  }`}
+                  className="w-full h-12 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border-0 shadow-lg hover:shadow-xl group"
                   onClick={handleGoogleSignIn}
-                  disabled={loading || !googleConfigured}
+                  disabled={loading}
                 >
                   <FaGoogle className="mr-3 group-hover:scale-110 transition-transform" />
-                  {!googleConfigured 
-                    ? "Google OAuth não configurado" 
-                    : `${isLogin ? "Entrar" : "Criar conta"} com Google`
-                  }
+                  {isLogin ? "Entrar" : "Criar conta"} com Google
                   <LucideArrowRight className="ml-auto w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </Button>
 
-                {!googleConfigured && (
-                  <div className="text-center text-xs text-gray-500 bg-yellow-50 p-2 rounded">
-                    ⚠️ Google OAuth está sendo configurado. Use login com email por enquanto.
-                  </div>
-                )}
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
                     <span className="w-full border-t border-gray-300" />
@@ -477,12 +336,6 @@ export default function Login() {
                     </div>
                   )}
 
-                  {debugInfo && process.env.NODE_ENV === 'development' && (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-blue-700 text-xs font-mono">{debugInfo}</p>
-                    </div>
-                  )}
-
                   <Button
                     type="submit"
                     className="w-full h-12 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl group"
@@ -491,7 +344,7 @@ export default function Login() {
                     {loading ? (
                       <div className="flex items-center">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                        {backendStatus === "offline" ? "Conectando..." : "Processando..."}
+                        Processando...
                       </div>
                     ) : (
                       <>
@@ -513,7 +366,6 @@ export default function Login() {
                       onClick={() => {
                         setIsLogin(!isLogin);
                         setError("");
-                        setDebugInfo("");
                         setFormData({ email: "", password: "", name: "" });
                       }}
                     >
