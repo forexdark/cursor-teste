@@ -438,33 +438,39 @@ async def search_produtos_ml(query: str, current_user: Usuario = Depends(get_cur
         result = await buscar_produtos_ml(query, current_user.id, limit=15)
         
         if result:
-            print(f"✅ Busca ML bem-sucedida: {len(result.get('results', []))} produtos")
+            results_count = len(result.get('results', []))
+            total_available = result.get('paging', {}).get('total', 0)
+            print(f"✅ [OAUTH 2025] Busca ML bem-sucedida: {results_count} produtos retornados de {total_available} disponíveis")
             return {
                 "success": True,
                 "query": query,
                 "user_id": current_user.id,
                 "ml_response": result,
-                "authenticated": True
+                "authenticated": True,
+                "oauth_version": "2.0_PKCE",
+                "results_count": results_count,
+                "total_available": total_available
             }
         else:
-            print(f"❌ Busca ML falhou para user {current_user.id}")
+            print(f"❌ [OAUTH 2025] Busca ML falhou para user {current_user.id}")
             return {
                 "success": False,
-                "error": "Erro na busca do Mercado Livre",
-                "message": "Não foi possível buscar produtos. Verifique sua autorização.",
+                "error": "🔍 Nenhum resultado encontrado ou erro na API ML",
+                "message": "Não foi possível buscar produtos. Tente outro termo ou verifique sua autorização.",
                 "action_required": "check_authorization",
                 "user_id": current_user.id
             }
             
     except Exception as e:
-        print(f"❌ ERRO na busca ML: {str(e)}")
-        print(f"❌ Traceback: {traceback.format_exc()}")
+        print(f"❌ [OAUTH 2025] ERRO na busca ML: {str(e)}")
+        if os.environ.get('DEBUG'):
+            print(f"❌ [OAUTH 2025] Traceback: {traceback.format_exc()}")
         return {
             "success": False,
             "error": str(e),
             "message": "Erro interno na busca",
             "user_id": current_user.id,
-            "trace": traceback.format_exc() if os.environ.get('DEBUG') else None
+            "debug_trace": traceback.format_exc() if os.environ.get('DEBUG') else "Set DEBUG=1 for details"
         }
 
 # --- HISTÓRICO DE PREÇOS ---

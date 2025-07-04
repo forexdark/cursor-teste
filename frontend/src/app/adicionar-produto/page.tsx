@@ -119,21 +119,17 @@ export default function AdicionarProduto() {
     try {
       console.log(`🔍 Iniciando busca: "${q}"`);
       
-      // Tentar busca detalhada primeiro, depois simples
-      const searchUrls = [
-        `${process.env.NEXT_PUBLIC_API_URL}/produtos/search-enhanced/${encodeURIComponent(q.trim())}`,
-        `${process.env.NEXT_PUBLIC_API_URL}/produtos/search/${encodeURIComponent(q.trim())}`
-      ];
+      // Usar apenas o endpoint que existe no backend
+      const searchUrl = `${process.env.NEXT_PUBLIC_API_URL}/produtos/search/${encodeURIComponent(q.trim())}`;
       
-      let searchUrl = searchUrls[0]; // Começar com busca detalhada
       console.log(`📡 URL de busca: ${searchUrl}`);
       
-      // Controller para timeout
-      let controller = new AbortController();
-      let timeoutId = setTimeout(() => controller.abort(), 20000); // 20 segundos para busca detalhada
+      // Controller para timeout de 15 segundos
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
       try {
-        let response = await fetch(searchUrl, {
+        const response = await fetch(searchUrl, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${backendJwt}`,
@@ -144,30 +140,7 @@ export default function AdicionarProduto() {
         });
         
         clearTimeout(timeoutId);
-        
-        // Se busca detalhada falhou, tentar busca simples
-        if (!response.ok && searchUrl === searchUrls[0]) {
-          console.log("⚠️ Busca detalhada falhou, tentando busca simples...");
-          
-          controller = new AbortController();
-          timeoutId = setTimeout(() => controller.abort(), 10000); // 10 segundos para busca simples
-          
-          searchUrl = searchUrls[1];
-          
-          response = await fetch(searchUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${backendJwt}`,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-        }
-        
-        console.log(`📊 Status da resposta: ${response.status}`);
+        console.log(`📊 [BUSCA DEBUG] Status da resposta: ${response.status}`);
         
         // Log adicional para debug
         if (process.env.NODE_ENV === 'development') {
@@ -187,7 +160,7 @@ export default function AdicionarProduto() {
           } else if (response.status === 504) {
             setError("Busca muito lenta. Tente novamente com um termo mais específico.");
           } else {
-            setError(`Erro na busca (${response.status}). Tente novamente.`);
+            setError(`❌ Erro HTTP ${response.status}: ${errorText.substring(0, 100)}`);
           }
           setSugestoes([]);
           setShowSuggestions(true);
@@ -286,16 +259,17 @@ export default function AdicionarProduto() {
         }
         
       } catch (fetchError) {
-        clearTimeout(timeoutId);
         
         if (fetchError.name === 'AbortError') {
-          console.error("❌ Timeout na busca");
-          setError("Busca muito lenta. Tente novamente com um termo mais específico.");
+          console.error("❌ [BUSCA DEBUG] Timeout na busca");
+          setError("⏰ Busca muito lenta (15s). Tente com termo mais específico.");
         } else {
-          console.error("❌ Erro na requisição:", fetchError);
-          setError("Erro de conexão. Verifique sua internet e tente novamente.");
+          console.error("❌ [BUSCA DEBUG] Erro na requisição:", fetchError);
+          setError("🌐 Erro de conexão. Verifique sua internet e tente novamente.");
         }
         setSugestoes([]);
+      } finally {
+        clearTimeout(timeoutId);
       }
 
       setShowSuggestions(true);
